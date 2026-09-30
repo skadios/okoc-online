@@ -370,3 +370,25 @@
   .game-modal{max-height:calc(100svh - 20px);padding:16px;border-width:3px;box-shadow:6px 6px var(--red)}
   .game-modal h2{font-size:1.55rem}
 }
+
+
+/* Server-authoritative dice result animation. The numeric result stays visible even when motion is reduced. */
+.dice-roll-overlay{position:fixed;inset:0;z-index:180;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.72);animation:dice-overlay-in .18s ease-out both;pointer-events:none}
+.dice-roll-card{width:min(430px,100%);padding:24px;background:var(--paper,#fff);color:#000;border:5px solid #000;box-shadow:10px 10px var(--red,#f00008);text-align:center}
+.dice-roll-card>.eyebrow{display:block;font-weight:1000;letter-spacing:.16em}
+.dice-roll-dice{display:flex;justify-content:center;gap:14px;margin:20px 0}
+.dice-roll-die{width:clamp(82px,18vw,112px);aspect-ratio:1;display:grid;place-items:center;position:relative;background:#fff;border:4px solid #000;box-shadow:5px 5px #000;animation:dice-tumble .62s cubic-bezier(.2,.8,.2,1) both}
+.dice-roll-die span{font-family:Arial,sans-serif;font-size:clamp(3.4rem,10vw,5rem);line-height:1}
+.dice-roll-die b{position:absolute;right:5px;bottom:2px;background:#000;color:#fff;min-width:22px;padding:3px;font-size:.7rem}
+.dice-roll-card>strong{display:block;font:1000 1.15rem/1.2 var(--display,Arial Black,Arial);letter-spacing:.06em}
+.dice-roll-card>p{margin:12px 0 0;font-size:.7rem;line-height:1.45;font-weight:800}
+@keyframes dice-overlay-in{from{opacity:0}to{opacity:1}}
+@keyframes dice-tumble{0%{transform:translateY(-45px) rotate(-25deg) scale(.65);opacity:.3}65%{transform:translateY(5px) rotate(9deg) scale(1.05)}100%{transform:translateY(0) rotate(0) scale(1);opacity:1}}
+@media(prefers-reduced-motion:reduce){.dice-roll-overlay,.dice-roll-die{animation:none!important}}
+/* Dice result clarity: the exact face, card name and conditional outcome stay readable. */
+.dice-roll-card-title{font:1000 clamp(1.2rem,4vw,1.8rem)/1.05 var(--display,Arial Black,Arial);margin:12px 0 0;text-transform:uppercase}
+.dice-roll-outcome{border:3px solid #000;background:#fff;padding:12px;margin:14px 0 0!important;font-size:.8rem!important;font-weight:1000!important;line-height:1.4!important}
+.dice-roll-caption{color:#333;font-size:.58rem!important;line-height:1.4!important}
+.dice-roll-card-title{font:1000 clamp(1.2rem,4vw,1.8rem)/1.05 var(--display,Arial Black,Arial);margin:12px 0 0;text-transform:uppercase}
+.dice-roll-outcome{border:3px solid #000;background:#fff;padding:12px;margin:14px 0 0!important;font-size:.8rem!important;font-weight:1000!important;line-height:1.4!important}
+.dice-roll-caption{color:#333;font-size:.58rem!important;line-height:1.4!important}

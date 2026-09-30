@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {CARDS,CARD_MAP,KING_CARDS} from '../shared/cards.js';
-import {createGame,startRound,playCard,decide,action,tick} from '../server/game-engine.js';
+import {createGame,startRound,playCard,decide,action,tick,publicState} from '../server/game-engine.js';
 
 const players=()=>Array.from({length:4},(_,i)=>({id:`p${i+1}`,name:`P${i+1}`,connected:true}));
 const high=()=>0.8;
@@ -54,8 +54,71 @@ for(const c of CARDS){
   });
 }
 
+
+test('King Sub Rosa discards a selected card from the target hand instead of stealing it across roles',()=>{
+  const g=fresh();const k=g.players.find(x=>x.role==='king'),n=nobleOther(g,k);
+  const kingSubRosa=KING_CARDS.find(c=>c.id==='sub-rosa');
+  k.hand=[{...kingSubRosa,instanceId:'king-sub-rosa'}];
+  const targetCard={...CARD_MAP.wrath,instanceId:'target-noble-card'};
+  n.hand=[targetCard];g.currentPlayerId=k.id;
+  playCard(g,k.id,'king-sub-rosa',{targetId:n.id});
+  decide(g,k.id,{mode:'hand'});
+  assert.equal(g.pending.roll,5);
+  assert.equal(publicState(g,k.id).lastRoll,5);
+  assert.deepEqual(publicState(g,k.id).rollEvents.at(-1),{id:1,rolls:[5],cardId:'sub-rosa'});
+  decide(g,k.id,{mode:'hand',cardInstanceId:targetCard.instanceId});
+  assert.equal(n.hand.some(c=>c.instanceId===targetCard.instanceId),false);
+  assert.equal(k.hand.some(c=>c.instanceId===targetCard.instanceId),false);
+  assert.ok(g.discard.some(c=>c.instanceId===targetCard.instanceId));
+  assert.equal(g.pending,null);
+});
+
+test('Sub Rosa does not discard a card when its die condition is not met',()=>{
+  const g=fresh();const k=g.players.find(x=>x.role==='king'),n=nobleOther(g,k);
+  const kingSubRosa=KING_CARDS.find(c=>c.id==='sub-rosa');
+  k.hand=[{...kingSubRosa,instanceId:'king-sub-rosa-fail'}];
+  const targetCard={...CARD_MAP.wrath,instanceId:'target-card-fail'};
+  n.hand=[targetCard];g.currentPlayerId=k.id;g.rng=()=>0;
+  playCard(g,k.id,'king-sub-rosa-fail',{targetId:n.id});
+  decide(g,k.id,{mode:'hand'});
+  assert.equal(g.pending,null);
+  assert.equal(n.hand.some(c=>c.instanceId===targetCard.instanceId),true);
+  assert.equal(g.discard.some(c=>c.instanceId===targetCard.instanceId),false);
+  assert.equal(g.rollEventId,1);
+  assert.equal(publicState(g,k.id).lastRoll,1);
+  assert.deepEqual(publicState(g,k.id).rollEvents.at(-1),{id:1,rolls:[1],cardId:'sub-rosa'});
+});
+
 test('Betrayal can be refused by one Noble and still succeed if another Noble supports it',()=>{
   const g=createGame(players().concat({id:'p5',name:'P5',connected:true}),high);g.kingReveal=null;startRound(g);g.round=2;const actor=nobleOther(g,g.players.find(x=>x.role==='king'));const target=g.players.find(x=>x.role==='noble'&&x.id!==actor.id);const a=g.players.find(x=>x.role==='noble'&&x.id!==target.id&&x.id!==actor.id);actor.hand=[{...CARD_MAP.betrayal,instanceId:'b'}];g.currentPlayerId=actor.id;playCard(g,actor.id,'b',{targetId:target.id});decide(g,a.id,{support:false});assert.ok(g.pending);const b=g.players.find(x=>x.role==='noble'&&x.id!==target.id&&x.id!==a.id&&x.id!==actor.id);decide(g,b.id,{support:true});assert.equal(g.pending,null);assert.equal(target.gold,0);
+});
+
+test('King Sub Rosa discards a selected card regardless of its deck role',()=>{
+  const g=fresh();const k=g.players.find(x=>x.role==='king');const target=nobleOther(g,k);
+  k.hand=[{...KING_CARDS.find(c=>c.id==='sub-rosa'),instanceId:'king-subrosa'}];
+  const foreign={...CARD_MAP.wrath,instanceId:'noble-card-to-discard'};target.hand=[foreign];g.currentPlayerId=k.id;g.rng=()=>0.8;
+  playCard(g,k.id,'king-subrosa',{targetId:target.id});decide(g,k.id,{mode:'hand'});
+  assert.equal(g.pending.type,'subRosa');assert.equal(g.pending.roll,5);
+  decide(g,k.id,{mode:'hand',cardInstanceId:foreign.instanceId});
+  assert.equal(g.pending,null);assert.ok(g.discard.some(c=>c.instanceId===foreign.instanceId));
+  assert.ok(!k.hand.some(c=>c.instanceId===foreign.instanceId));assert.ok(!target.hand.some(c=>c.instanceId===foreign.instanceId));
+});
+
+test('King Sub Rosa does nothing when its die condition is not met',()=>{
+  const g=fresh();const k=g.players.find(x=>x.role==='king');const target=nobleOther(g,k);
+  k.hand=[{...KING_CARDS.find(c=>c.id==='sub-rosa'),instanceId:'king-subrosa-fail'}];
+  const kept={...CARD_MAP.wrath,instanceId:'keep-this-card'};target.hand=[kept];g.currentPlayerId=k.id;g.rng=()=>0;
+  playCard(g,k.id,'king-subrosa-fail',{targetId:target.id});decide(g,k.id,{mode:'hand'});
+  assert.equal(g.pending,null);assert.ok(target.hand.some(c=>c.instanceId===kept.instanceId));
+  assert.ok(!g.discard.some(c=>c.instanceId===kept.instanceId));
+});
+
+test('Noble Sub Rosa takes a card rather than discarding it',()=>{
+  const g=fresh();const n=g.players.find(x=>x.role==='noble');const target=g.players.find(x=>x.role==='noble'&&x.id!==n.id);
+  n.hand=[{...CARD_MAP['sub-rosa'],instanceId:'noble-subrosa'}];const chosen={...CARD_MAP.wrath,instanceId:'noble-card-to-take'};target.hand=[chosen];g.currentPlayerId=n.id;g.rng=()=>0.8;
+  playCard(g,n.id,'noble-subrosa',{targetId:target.id});decide(g,n.id,{mode:'hand'});
+  decide(g,n.id,{mode:'hand',cardInstanceId:chosen.instanceId});
+  assert.ok(n.hand.some(c=>c.instanceId===chosen.instanceId));assert.ok(!g.discard.some(c=>c.instanceId===chosen.instanceId));
 });
 
 test('Loyalty implements both printed options',()=>{

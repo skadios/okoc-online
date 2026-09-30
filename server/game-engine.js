@@ -11,6 +11,16 @@ const clampGold = n => Math.max(MIN_GOLD, Math.min(MAX_GOLD, Math.trunc(n)));
 const clampInt = (n,min,max) => Math.max(min, Math.min(max, Number.isFinite(Number(n)) ? Math.trunc(Number(n)) : min));
 const shuffle = (arr, rng=Math.random) => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 const roll = rng => 1 + Math.floor(rng()*6);
+const recordRoll = (game, value, cardId=null) => {
+  game.lastRoll=value; game.lastRolls=null; game.rollEventId=(game.rollEventId||0)+1;
+  game.rollEvents=game.rollEvents||[]; game.rollEvents.push({id:game.rollEventId,rolls:[value],cardId});
+  if(game.rollEvents.length>30)game.rollEvents.shift(); return value;
+};
+const recordRolls = (game, values, cardId=null) => {
+  game.lastRoll=null; game.lastRolls=[...values]; game.rollEventId=(game.rollEventId||0)+1;
+  game.rollEvents=game.rollEvents||[]; game.rollEvents.push({id:game.rollEventId,rolls:[...values],cardId});
+  if(game.rollEvents.length>30)game.rollEvents.shift(); return values;
+};
 
 export function makeDeck(defs, rng=Math.random){
   const raw=[];
@@ -308,6 +318,7 @@ export function checkGoldCrown(game){
   } else if(candidates.length===2){
     let a=roll(game.rng),b=roll(game.rng),guard=0;
     while(a===b && guard++<12){a=roll(game.rng);b=roll(game.rng);}
+    recordRolls(game,[a,b]);
     if(a===b){
       // The official guide defines the two-player simultaneous case as a roll;
       // if a deterministic test RNG produces the same value forever, fall back
@@ -322,6 +333,7 @@ export function checkGoldCrown(game){
     // impossible-to-stage larger tie, use one server roll per contender and
     // deterministic seat-order tie breaking; never loop.
     const rolls=candidates.map(p=>({p,roll:roll(game.rng)}));
+    recordRolls(game,rolls.map(x=>x.roll));
     const highest=Math.max(...rolls.map(x=>x.roll));
     winner=rolls.filter(x=>x.roll===highest).map(x=>x.p).sort((a,b)=>seatIndex(game,a.id)-seatIndex(game,b.id))[0];
     for(const c of candidates)if(c.id!==winner.id)changeGold(game,c,-100);
@@ -441,7 +453,7 @@ function immediate(game,p,c,payload){
     case'divine':{
       if(game.round<3)throw new Error('Divine Right can only be played in the last two rounds.');
       if(p.gold>300)throw new Error('You need 300 gold or less to play Divine Right.');
-      const d=roll(game.rng);game.lastRoll=d;log(game,`${p.name} rolled ${d}.`,`${p.name} a obtenu ${d}.`);if(d>=5)changeGold(game,p,1200);return;
+      const d=roll(game.rng);recordRoll(game,d,c.id);log(game,`${p.name} rolled ${d}.`,`${p.name} a obtenu ${d}.`);if(d>=5)changeGold(game,p,1200);return;
     }
     case'grudge':{
       const t=validateTarget(game,targetId,{notSelf:true,actor:p.id});
@@ -455,14 +467,14 @@ function immediate(game,p,c,payload){
     case'icarus':{
       const total=game.players.filter(x=>x.role==='noble'&&x.id!==p.id).length*100;
       if(p.gold<total)throw new Error('You cannot afford the payment if the roll fails.');
-      const d=roll(game.rng);game.lastRoll=d;log(game,`${p.name} rolled ${d}.`,`${p.name} a obtenu ${d}.`);
+      const d=roll(game.rng);recordRoll(game,d,c.id);log(game,`${p.name} rolled ${d}.`,`${p.name} a obtenu ${d}.`);
       if(d>=4)nobles(game).forEach(n=>{if(n.id!==p.id){enforceGoldTakeProtection(game,p,n);changeGold(game,n,-100);changeGold(game,p,100)}});
       else nobles(game).forEach(n=>{if(n.id!==p.id)changeGold(game,p,-100),changeGold(game,n,100)});
       return;
     }
     case'indebted':{
       const t=validateTarget(game,targetId,{noble:true,notSelf:true,actor:p.id});
-      const d=roll(game.rng);game.lastRoll=d;log(game,`${p.name} rolled ${d}.`,`${p.name} a obtenu ${d}.`);
+      const d=roll(game.rng);recordRoll(game,d,c.id);log(game,`${p.name} rolled ${d}.`,`${p.name} a obtenu ${d}.`);
       if(d>=3)p.effects.push({type:'debt',targetId:t.id,active:true});return;
     }
     case'isolation': p.effects.push({type:'isolation',targetId:p.id,expiresAfterPlayerTurn:p.id,createdTurnSerial:game.turnSerial||0});return;
@@ -490,7 +502,7 @@ function immediate(game,p,c,payload){
     }
     case'meat':{
       const t=validateTarget(game,targetId,{noble:true,notSelf:true,actor:p.id});
-      let a=roll(game.rng),b=roll(game.rng);game.lastRolls=[a,b];log(game,`${p.name} rolled ${a}; ${t.name} rolled ${b}.`,`${p.name} a obtenu ${a} ; ${t.name} a obtenu ${b}.`);if(a>b){enforceGoldTakeProtection(game,p,t);changeGold(game,t,-200);changeGold(game,p,200);}return;
+      let a=roll(game.rng),b=roll(game.rng);recordRolls(game,[a,b],c.id);log(game,`${p.name} rolled ${a}; ${t.name} rolled ${b}.`,`${p.name} a obtenu ${a} ; ${t.name} a obtenu ${b}.`);if(a>b){enforceGoldTakeProtection(game,p,t);changeGold(game,t,-200);changeGold(game,p,200);}return;
     }
     case'peoples_champion':{
       if(game.round!==4)throw new Error('People’s Champion can only be played in the last round.');
@@ -518,7 +530,7 @@ function immediate(game,p,c,payload){
       const t=validateTarget(game,targetId,{notSelf:true,actor:p.id});game.pending={type:'tithe',actorId:p.id,card:c,targetId:t.id};return;
     }
     case'unprotected':{
-      const d=roll(game.rng);game.lastRoll=d;
+      const d=roll(game.rng);recordRoll(game,d,c.id);
       if(d>=5){
         for(const x of game.players){
           const removed=x.knights.filter(k=>k.placerId!==p.id);
@@ -529,7 +541,7 @@ function immediate(game,p,c,payload){
       return;
     }
     case'suppress_rebellion':{
-      const d=roll(game.rng);game.lastRoll=d;if(d<=3){changeGold(game,p,200);nobles(game).filter(n=>n.id!==p.id).forEach(n=>changeGold(game,n,100));}return;
+      const d=roll(game.rng);recordRoll(game,d,c.id);if(d<=3){changeGold(game,p,200);nobles(game).filter(n=>n.id!==p.id).forEach(n=>changeGold(game,n,100));}return;
     }
     case'wrath':{
       if(payload.mode==='bank'){const t=validateTarget(game,targetId,{notSelf:false});changeGold(game,t,-100);return;}
@@ -555,7 +567,7 @@ function immediate(game,p,c,payload){
           if(b.id!==p.id)changeGold(game,b,-200);
         }
       }
-      game.lastRolls=rolls;
+      recordRolls(game,rolls,c.id);
       log(game,`${p.name} resolved Black Plague. Rolls: ${rolls.join(', ')}.`,`Peste noire résolue par ${p.name}. Dés : ${rolls.join(', ')}.`);
       return;
     }
@@ -582,7 +594,7 @@ function immediate(game,p,c,payload){
     case'mad_king':{
       const rolls=[];
       for(const x of game.players){const d=roll(game.rng);rolls.push(d);if(d===1)changeGold(game,x,x.id===p.id?-500:-300);}
-      game.lastRolls=rolls;
+      recordRolls(game,rolls,c.id);
       log(game,`${p.name} resolved Mad King. Rolls: ${rolls.join(', ')}.`,`${p.name} résout Roi fou. Dés : ${rolls.join(', ')}.`);
       return;
     }
@@ -599,7 +611,7 @@ function immediate(game,p,c,payload){
     case'kings_eye':{const t=validateTarget(game,targetId,{notSelf:false});t.effects.push({type:'kings_eye',source:p.id,targetId:t.id,expiresAfterPlayerTurn:p.id,createdTurnSerial:game.turnSerial||0});return;}
     case'we_ride':{
       const a=validateTarget(game,targetId,{noble:true}),b=validateTarget(game,payload.target2Id,{noble:true});if(a.id===b.id)throw new Error('Choose two different Nobles.');
-      let da=roll(game.rng),db=roll(game.rng),guard=0;while(da===db && guard++<20)db=roll(game.rng);if(da===db)db=(db%6)+1;game.lastRolls=[da,db];game.pending={type:'weRide',actorId:p.id,card:c,aId:a.id,bId:b.id,aRoll:da,bRoll:db};return;
+      let da=roll(game.rng),db=roll(game.rng),guard=0;while(da===db && guard++<20)db=roll(game.rng);if(da===db)db=(db%6)+1;recordRolls(game,[da,db],c.id);game.pending={type:'weRide',actorId:p.id,card:c,aId:a.id,bId:b.id,aRoll:da,bRoll:db};return;
     }
     default: throw new Error('This card effect is not implemented.');
   }
@@ -699,7 +711,7 @@ export function decide(game,playerId,payload={}){
     if(q.supports.some(x=>x.playerId===p.id))throw new Error('You already responded.');
     q.supports.push({playerId:p.id,support:!!payload.support});
     if(q.supports.length>=2){
-      const k=king(game);const d=roll(game.rng);const mod=q.mods.reduce((s,m)=>s+(m.side==='support'?1:-1),0);const total=d+mod;game.lastRoll=d;log(game,`${k.name} rolled ${d}${mod?` (${mod>0?'+':''}${mod})`:''}.`,`Le Roi a obtenu ${d}${mod?` (${mod>0?'+':''}${mod})`:''}.`);
+      const k=king(game);const d=roll(game.rng);const mod=q.mods.reduce((s,m)=>s+(m.side==='support'?1:-1),0);const total=d+mod;recordRoll(game,d,q.card.id);log(game,`${k.name} rolled ${d}${mod?` (${mod>0?'+':''}${mod})`:''}.`,`Le Roi a obtenu ${d}${mod?` (${mod>0?'+':''}${mod})`:''}.`);
       if(total<=3){swapKing(game,actor.id);} else changeGold(game,k,200);
       for(const m of q.mods){const kp=playerById(game,m.playerId);if((m.side==='support') !== (total<=3))changeGold(game,kp,-300);}
       finishPending(game,actor,q);return;
@@ -741,28 +753,40 @@ export function decide(game,playerId,payload={}){
     const target=playerById(game,q.targetId);if(!target)throw new Error('Target unavailable.');
     if(!q.mode){
       if(payload.mode==='hand')enforceCardLookProtection(game,actor,target);
+      if(payload.mode==='knight' && actor.role==='king')throw new Error('The King’s Sub Rosa only allows looking at a player’s hand.');
       if(payload.mode==='knight' && hasIsolation(game,target.id))throw new Error('Isolation prevents looking at this player’s Knight.');
       if(!['hand','knight'].includes(payload.mode))throw new Error('Choose hand or face-down Knight.');
       if(payload.mode==='knight' && !target.knights.length)throw new Error('That player has no face-down Knight.');
-      q.mode=payload.mode;return;
+      q.mode=payload.mode;
+      q.roll=roll(game.rng);recordRoll(game,q.roll,q.card.id);
+      log(game,`${actor.name} rolled ${q.roll} for Sub Rosa.`,`${actor.name} a obtenu ${q.roll} pour Catimini.`);
+      if(q.roll<4){finishPending(game,actor,q);return;}
+      return;
     }
-    if(q.roll==null){q.roll=roll(game.rng);game.lastRoll=q.roll;log(game,`${actor.name} rolled ${q.roll} for Sub Rosa.`,`${actor.name} a obtenu ${q.roll} pour Catimini.`);}
-    const d=q.roll;
-    if(d<4){finishPending(game,actor,q);return;}
+    if(q.roll==null)throw new Error('Sub Rosa must roll before resolving its effect.');
+    if(q.roll<4){finishPending(game,actor,q);return;}
     if(q.mode==='hand'){
-      if(!payload.cardInstanceId)throw new Error('Choose a card from the revealed hand.');
-      const stolen=target.hand.find(c=>c.instanceId===payload.cardInstanceId);if(!stolen)throw new Error('That card is no longer available.');
-      if(stolen.side!==actor.role)throw new Error('You cannot take a card from the other role’s deck.');
-      if(stolen.id==='royal-bomb')throw new Error('Royal Bomb cannot be stolen.');
-      target.hand=target.hand.filter(c=>c.instanceId!==stolen.instanceId);actor.hand.push(stolen);drawToMinimum(game,target);
+      if(!payload.cardInstanceId)throw new Error('Choose a card to discard from the revealed hand.');
+      const chosen=target.hand.find(c=>c.instanceId===payload.cardInstanceId);if(!chosen)throw new Error('That card is no longer available.');
+      if(actor.role!=='king' && chosen.side!==actor.role)throw new Error('You cannot take a card from the other role’s deck.');
+      if(actor.role!=='king' && chosen.id==='royal-bomb')throw new Error('Royal Bomb cannot be stolen.');
+      target.hand=target.hand.filter(c=>c.instanceId!==chosen.instanceId);
+      if(actor.role==='king'){
+        game.discard.push(chosen);
+        log(game,`${actor.name} discarded a card from ${target.name}’s hand.`,`${actor.name} défausse une carte de la main de ${target.name}.`);
+      }else{
+        actor.hand.push(chosen);
+        log(game,`${actor.name} took a card from ${target.name}’s hand.`,`${actor.name} prend une carte de la main de ${target.name}.`);
+      }
     } else if(q.mode==='knight'){
+      if(actor.role==='king')throw new Error('The King’s Sub Rosa cannot inspect a Knight.');
       if(target.hand.length){
-        let idx=Math.floor(game.rng()*target.hand.length), stolen=target.hand[idx];
-        // A Royal Bomb is never stealable. Re-roll the random choice among stealable cards.
         const stealable=target.hand.filter(c=>c.side===actor.role && c.id!=='royal-bomb');
         if(!stealable.length){finishPending(game,actor,q);return;}
-        stolen=stealable[Math.floor(game.rng()*stealable.length)];
-        target.hand=target.hand.filter(c=>c.instanceId!==stolen.instanceId);actor.hand.push(stolen);drawToMinimum(game,target);
+        const stolen=stealable[Math.floor(game.rng()*stealable.length)];
+        target.hand=target.hand.filter(c=>c.instanceId!==stolen.instanceId);
+        actor.hand.push(stolen);
+        log(game,`${actor.name} took a random card from ${target.name}’s hand after inspecting a Knight.`,`${actor.name} prend une carte au hasard de la main de ${target.name} après avoir inspecté un Chevalier.`);
       }
     }
     finishPending(game,actor,q);return;
@@ -809,7 +833,7 @@ export function decide(game,playerId,payload={}){
     const target=validateTarget(game,payload.targetId,{noble:true,notSelf:true,actor:p.id});q.votes[p.id]=target.id;
     const nextIndex=q.eligible.findIndex(id=>id===p.id)+1;
     if(nextIndex<q.eligible.length){q.currentVoterId=q.eligible[nextIndex];return;}
-    const counts={};Object.values(q.votes).forEach(id=>counts[id]=(counts[id]||0)+1);const max=Math.max(...Object.values(counts));const tied=Object.entries(counts).filter(([,v])=>v===max).map(([id])=>id);let victim=playerById(game,tied[0]);if(tied.length>1){const d=roll(game.rng);victim=playerById(game,tied[(d-1)%tied.length]);game.lastRoll=d;log(game,`Scapegoat tie resolved with a ${d}.`,`Égalité du Bouc émissaire résolue avec un ${d}.`);}changeGold(game,victim,-300);finishPending(game,actor,q);return;
+    const counts={};Object.values(q.votes).forEach(id=>counts[id]=(counts[id]||0)+1);const max=Math.max(...Object.values(counts));const tied=Object.entries(counts).filter(([,v])=>v===max).map(([id])=>id);let victim=playerById(game,tied[0]);if(tied.length>1){const d=roll(game.rng);victim=playerById(game,tied[(d-1)%tied.length]);recordRoll(game,d,q.card.id);log(game,`Scapegoat tie resolved with a ${d}.`,`Égalité du Bouc émissaire résolue avec un ${d}.`);}changeGold(game,victim,-300);finishPending(game,actor,q);return;
   }
   if(q.type==='champion'){
     if(!voteEligible)throw new Error('You cannot vote on this.');q.votes[p.id]=!!payload.vote;if(q.eligible.every(id=>id in q.votes)){
@@ -820,7 +844,7 @@ export function decide(game,playerId,payload={}){
           let a=roll(game.rng),b=roll(game.rng),guard=0;
           while(a===b && guard++<12){a=roll(game.rng);b=roll(game.rng);}
           if(a===b){b=(b%6)+1;}
-          game.lastRolls=[a,b];
+          recordRolls(game,[a,b],q.card.id);
           const targetWins=a>b;
           const loser=targetWins?k:target;
           changeGold(game,loser,-100);
@@ -1072,6 +1096,7 @@ export function publicState(game,viewerId){
   const viewer=playerById(game,viewerId);if(!viewer)throw new Error('Viewer not found.');
   return {
     phase:game.phase,round:game.round,direction:game.direction,currentPlayerId:game.currentPlayerId,kingId:game.kingId,
+    lastRoll:game.lastRoll??null,lastRolls:Array.isArray(game.lastRolls)?[...game.lastRolls]:null,rollEventId:game.rollEventId||0,rollEvents:(game.rollEvents||[]).slice(-20).map(e=>({id:e.id,rolls:[...e.rolls],cardId:e.cardId||null})),
     kingReveal:game.kingReveal?{startedAt:game.kingReveal.startedAt,endsAt:game.kingReveal.endsAt}:null,
     negotiation:game.negotiation?{startedAt:game.negotiation.startedAt,endsAt:game.negotiation.endsAt,received:game.negotiation.received[viewerId]||0}:null,
     players:game.players.map(p=>({id:p.id,name:p.name,role:p.role,gold:p.gold,connected:p.connected,handCount:p.hand.length,playedThisTurn:p.playedThisTurn||0,turnLimit:turnLimit(game,p),knights:p.knights.map(k=>({id:k.id,ownerId:k.ownerId,protection:k.placerRole==='king'?'king':'noble'})),commitments:p.commitments.map(c=>({type:c.type,targetId:c.targetId,untilRound:c.untilRound})),effects:p.effects.map(e=>({type:e.type,targetId:e.targetId,a:e.a,b:e.b,expiresAtTurnSerial:e.expiresAtTurnSerial}))})),
