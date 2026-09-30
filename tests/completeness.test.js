@@ -41,7 +41,7 @@ test('Sub Rosa rolls exactly once and never leaks a hand before the mode is chos
   const g=fresh(),p=put(g,'sub-rosa'),target=g.players.find(x=>x.role==='noble'&&x.id!==p.id);target.hand=[{...CARD_MAP.wrath,instanceId:'hidden'}];
   playCard(g,p.id,p.hand[0].instanceId,{targetId:target.id});
   const pub=publicState(g,p.id);assert.equal(pub.pending.mode,null);assert.equal(pub.players.find(x=>x.id===target.id).handCount,1);
-  decide(g,p.id,{mode:'hand'});assert.equal(g.pending.mode,'hand');decide(g,p.id,{mode:'hand',cardInstanceId:'hidden'});assert.equal(g.pending,null);
+  decide(g,p.id,{mode:'hand'});assert.equal(g.pending.mode,'hand');assert.equal(g.pending.awaitRoll,true);decide(g,p.id,{roll:true});decide(g,p.id,{mode:'hand',cardInstanceId:'hidden'});assert.equal(g.pending,null);
 });
 
 test('People’s Champion may nominate the player who played it',()=>{
@@ -57,6 +57,7 @@ test('face-down Knights remain when a Noble becomes King',()=>{
   // Resolve with two supports, causing the noble to take the crown under high roll rules only if the King fails;
   // this test directly checks the persistent property after a role change helper path through pending.
   decide(g,k.id,{support:true});const other=g.players.find(x=>x.id!==k.id&&x.id!==n.id);decide(g,other.id,{support:true});
+  decide(g,k.id,{roll:true});
   assert.ok(n.knights.length===1 || k.knights.length===1);
 });
 
@@ -133,6 +134,7 @@ test('Betray the King changes the King only through its resolved server-side car
   assert.equal(g.kingId,k.id);
   action(g,k.id,{type:'decision',payload:{support:true},actionId:'support-1'});
   action(g,other.id,{type:'decision',payload:{support:true},actionId:'support-2'});
+  assert.equal(g.pending.awaitRoll,true);action(g,k.id,{type:'decision',payload:{roll:true},actionId:'roll-1'});
   assert.equal(g.kingId,n.id);
   assert.equal(n.role,'king');
   assert.equal(k.role,'noble');

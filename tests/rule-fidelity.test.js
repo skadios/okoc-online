@@ -62,10 +62,10 @@ test('King Sub Rosa discards a selected card from the target hand instead of ste
   const targetCard={...CARD_MAP.wrath,instanceId:'target-noble-card'};
   n.hand=[targetCard];g.currentPlayerId=k.id;
   playCard(g,k.id,'king-sub-rosa',{targetId:n.id});
-  decide(g,k.id,{mode:'hand'});
+  decide(g,k.id,{mode:'hand'});decide(g,k.id,{roll:true});
   assert.equal(g.pending.roll,5);
   assert.equal(publicState(g,k.id).lastRoll,5);
-  assert.deepEqual(publicState(g,k.id).rollEvents.at(-1),{id:1,rolls:[5],cardId:'sub-rosa'});
+  assert.deepEqual(publicState(g,k.id).rollEvents.at(-1).rolls,[5]);assert.equal(publicState(g,k.id).rollEvents.at(-1).players[0].name,k.name);
   decide(g,k.id,{mode:'hand',cardInstanceId:targetCard.instanceId});
   assert.equal(n.hand.some(c=>c.instanceId===targetCard.instanceId),false);
   assert.equal(k.hand.some(c=>c.instanceId===targetCard.instanceId),false);
@@ -80,13 +80,13 @@ test('Sub Rosa does not discard a card when its die condition is not met',()=>{
   const targetCard={...CARD_MAP.wrath,instanceId:'target-card-fail'};
   n.hand=[targetCard];g.currentPlayerId=k.id;g.rng=()=>0;
   playCard(g,k.id,'king-sub-rosa-fail',{targetId:n.id});
-  decide(g,k.id,{mode:'hand'});
+  decide(g,k.id,{mode:'hand'});decide(g,k.id,{roll:true});
   assert.equal(g.pending,null);
   assert.equal(n.hand.some(c=>c.instanceId===targetCard.instanceId),true);
   assert.equal(g.discard.some(c=>c.instanceId===targetCard.instanceId),false);
   assert.equal(g.rollEventId,1);
   assert.equal(publicState(g,k.id).lastRoll,1);
-  assert.deepEqual(publicState(g,k.id).rollEvents.at(-1),{id:1,rolls:[1],cardId:'sub-rosa'});
+  assert.deepEqual(publicState(g,k.id).rollEvents.at(-1).rolls,[1]);assert.equal(publicState(g,k.id).rollEvents.at(-1).players[0].name,k.name);
 });
 
 test('Betrayal can be refused by one Noble and still succeed if another Noble supports it',()=>{
@@ -97,7 +97,7 @@ test('King Sub Rosa discards a selected card regardless of its deck role',()=>{
   const g=fresh();const k=g.players.find(x=>x.role==='king');const target=nobleOther(g,k);
   k.hand=[{...KING_CARDS.find(c=>c.id==='sub-rosa'),instanceId:'king-subrosa'}];
   const foreign={...CARD_MAP.wrath,instanceId:'noble-card-to-discard'};target.hand=[foreign];g.currentPlayerId=k.id;g.rng=()=>0.8;
-  playCard(g,k.id,'king-subrosa',{targetId:target.id});decide(g,k.id,{mode:'hand'});
+  playCard(g,k.id,'king-subrosa',{targetId:target.id});decide(g,k.id,{mode:'hand'});assert.equal(g.pending.awaitRoll,true);decide(g,k.id,{roll:true});
   assert.equal(g.pending.type,'subRosa');assert.equal(g.pending.roll,5);
   decide(g,k.id,{mode:'hand',cardInstanceId:foreign.instanceId});
   assert.equal(g.pending,null);assert.ok(g.discard.some(c=>c.instanceId===foreign.instanceId));
@@ -108,7 +108,7 @@ test('King Sub Rosa does nothing when its die condition is not met',()=>{
   const g=fresh();const k=g.players.find(x=>x.role==='king');const target=nobleOther(g,k);
   k.hand=[{...KING_CARDS.find(c=>c.id==='sub-rosa'),instanceId:'king-subrosa-fail'}];
   const kept={...CARD_MAP.wrath,instanceId:'keep-this-card'};target.hand=[kept];g.currentPlayerId=k.id;g.rng=()=>0;
-  playCard(g,k.id,'king-subrosa-fail',{targetId:target.id});decide(g,k.id,{mode:'hand'});
+  playCard(g,k.id,'king-subrosa-fail',{targetId:target.id});decide(g,k.id,{mode:'hand'});decide(g,k.id,{roll:true});
   assert.equal(g.pending,null);assert.ok(target.hand.some(c=>c.instanceId===kept.instanceId));
   assert.ok(!g.discard.some(c=>c.instanceId===kept.instanceId));
 });
@@ -116,7 +116,7 @@ test('King Sub Rosa does nothing when its die condition is not met',()=>{
 test('Noble Sub Rosa takes a card rather than discarding it',()=>{
   const g=fresh();const n=g.players.find(x=>x.role==='noble');const target=g.players.find(x=>x.role==='noble'&&x.id!==n.id);
   n.hand=[{...CARD_MAP['sub-rosa'],instanceId:'noble-subrosa'}];const chosen={...CARD_MAP.wrath,instanceId:'noble-card-to-take'};target.hand=[chosen];g.currentPlayerId=n.id;g.rng=()=>0.8;
-  playCard(g,n.id,'noble-subrosa',{targetId:target.id});decide(g,n.id,{mode:'hand'});
+  playCard(g,n.id,'noble-subrosa',{targetId:target.id});decide(g,n.id,{mode:'hand'});decide(g,n.id,{roll:true});
   decide(g,n.id,{mode:'hand',cardInstanceId:chosen.instanceId});
   assert.ok(n.hand.some(c=>c.instanceId===chosen.instanceId));assert.ok(!g.discard.some(c=>c.instanceId===chosen.instanceId));
 });
@@ -135,7 +135,7 @@ test('Royal Parrot stores the King-selected sentence and resolves the refusal pe
 });
 
 test('People’s Champion applies the simultaneous crown-roll penalty and changes King on a win',()=>{
-  const g=fresh();g.round=4;let rolls=[0.8,0.5];g.rng=()=>rolls.shift()??0.5;const actor=nobleOther(g,g.players.find(x=>x.role==='king'));const target=other(g,actor,g.players.find(x=>x.role==='king'));const k=g.players.find(x=>x.role==='king');actor.hand=[{...CARD_MAP['peoples-champion'],instanceId:'pc'}];g.currentPlayerId=actor.id;playCard(g,actor.id,'pc',{targetId:target.id});for(const id of g.pending.eligible)decide(g,id,{vote:true});assert.equal(g.kingId,target.id);assert.equal(target.gold,900);assert.equal(k.gold,600);
+  const g=fresh();g.round=4;let rolls=[0.8,0.5];g.rng=()=>rolls.shift()??0.5;const actor=nobleOther(g,g.players.find(x=>x.role==='king'));const target=other(g,actor,g.players.find(x=>x.role==='king'));const k=g.players.find(x=>x.role==='king');actor.hand=[{...CARD_MAP['peoples-champion'],instanceId:'pc'}];g.currentPlayerId=actor.id;playCard(g,actor.id,'pc',{targetId:target.id});for(const id of g.pending.eligible)decide(g,id,{vote:true});assert.equal(g.pending.stage,'rolling');decide(g,target.id,{roll:true});decide(g,k.id,{roll:true});assert.equal(g.kingId,target.id);assert.equal(target.gold,900);assert.equal(k.gold,600);
 });
 
 test('King’s Eye expires after the King’s next turn, not the protected Noble’s turn',()=>{
@@ -164,4 +164,16 @@ test('physical deck quantities are finite and role-specific',()=>{
   const k=Object.fromEntries(KING_CARDS.map(c=>[c.id,c.copies]));
   assert.equal(k['sub-rosa'],2);assert.equal(k['knight-noble'],1);assert.equal(k['helping-hand'],1);
   assert.equal(k['black-plague'],1);assert.equal(k['anchor'],2);assert.equal(k['loyal-dog'],3);
+});
+
+test('We Ride Together makes the lower roller choose first and requires the higher roller to accept a split',()=>{
+  const g=fresh();const k=g.players.find(x=>x.role==='king');const ns=g.players.filter(x=>x.role==='noble');const a=ns[0],b=ns[1];
+  let rolls=[0.8,0.5];g.rng=()=>rolls.shift()??0.5;
+  k.hand=[{...CARD_MAP['we-ride-together'],instanceId:'wrt'}];g.currentPlayerId=k.id;
+  playCard(g,k.id,'wrt',{targetId:a.id,target2Id:b.id});
+  assert.equal(g.pending.stage,'rolling');
+  decide(g,a.id,{roll:true});assert.equal(g.pending.rolls[a.id],5);
+  decide(g,b.id,{roll:true});assert.equal(g.pending.stage,'lowerChoice');assert.equal(g.pending.lowerId,b.id);assert.equal(g.pending.higherId,a.id);
+  decide(g,b.id,{choice:'split'});assert.equal(g.pending.stage,'higherChoice');assert.equal(g.pending.splitOffer,true);
+  decide(g,a.id,{accept:true});assert.equal(g.pending,null);assert.equal(a.gold,500);assert.equal(b.gold,500);
 });
