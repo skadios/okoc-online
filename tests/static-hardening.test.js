@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
+
+const root=path.resolve(new URL('..',import.meta.url).pathname);
 
 const main=fs.readFileSync(new URL('../client/src/main.jsx',import.meta.url),'utf8');
 const server=fs.readFileSync(new URL('../server/index.js',import.meta.url),'utf8');
@@ -39,4 +42,22 @@ test('game UI keeps unavailable card actions visible and greyed instead of remov
   assert.match(main,/physical-card \$\{selected===c\.instanceId\?'selected':''\} \$\{!st\.ok\?'unavailable':''\}/);
   assert.match(main,/action-status/);
   assert.match(main,/disabled=\{!cardPlayStatus\(card,state,me\)\.ok\}/);
+});
+
+test('mobile room links override stale sessions and expired sessions stop reconnect loops',()=>{
+  const src=fs.readFileSync(path.join(root,'client/src/main.jsx'),'utf8');
+  assert.match(src,/initialJoinCode\?/);
+  assert.match(src,/localStorage\.removeItem\('okocSession'\)/);
+  assert.match(src,/m\.message==='Session expired\.'/);
+  assert.match(src,/reconnectAllowedRef\.current=false/);
+  assert.match(src,/localStorage\.getItem\('okocSession'\)\|\|session/);
+  assert.match(src,/if\(wsRef\.current!==ws\)return/);
+});
+
+test('mobile-only responsive hardening is scoped to max-width media queries',()=>{
+  const css=fs.readFileSync(path.join(root,'client/src/style.css'),'utf8');
+  assert.match(css,/\/\* --- Mobile-only layout hardening: desktop styles remain unchanged --- \*\//);
+  assert.match(css,/@media \(max-width: 650px\)\{/);
+  assert.match(css,/\.home-menu\{width:100%;max-width:none/);
+  assert.match(css,/\.lobby-share\{width:100%/);
 });
