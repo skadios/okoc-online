@@ -110,13 +110,13 @@ test('King and Noble turns auto-advance after the required number of card plays 
   const g=fresh(); g.rng=()=>0.8;
   const k=g.players.find(p=>p.id===g.kingId);
   const nextId=g.seatOrder[(g.seatOrder.indexOf(k.id)+1)%g.seatOrder.length];
-  const safeKing=Array.from({length:8},(_,i)=>({...CARD_MAP['black-plague'],instanceId:`bb-${i}`}));
+  const safeKing=Array.from({length:8},(_,i)=>({...CARD_MAP['eye-for-eye'],instanceId:`bb-${i}`}));
   k.hand=safeKing;
   g.currentPlayerId=k.id;
   const before=k.hand.length;
-  playCard(g,k.id,k.hand[0].instanceId,{});
+  playCard(g,k.id,k.hand[0].instanceId,{targetId:g.players.find(p=>p.id!==k.id).id});
   assert.equal(g.currentPlayerId,k.id);
-  playCard(g,k.id,k.hand[0].instanceId,{});
+  playCard(g,k.id,k.hand[0].instanceId,{targetId:g.players.find(p=>p.id!==k.id).id});
   assert.equal(g.currentPlayerId,nextId);
   assert.equal(k.hand.length,before);
   assert.equal(k.playedThisTurn,0);

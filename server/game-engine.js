@@ -13,12 +13,12 @@ const shuffle = (arr, rng=Math.random) => { const a=[...arr]; for(let i=a.length
 const roll = rng => 1 + Math.floor(rng()*6);
 const recordRoll = (game, value, cardId=null, meta={}) => {
   game.lastRoll=value; game.lastRolls=null; game.rollEventId=(game.rollEventId||0)+1;
-  game.rollEvents=game.rollEvents||[]; game.rollEvents.push({id:game.rollEventId,rolls:[value],cardId,players:meta.players||[]});
+  game.rollEvents=game.rollEvents||[]; game.rollEvents.push({id:game.rollEventId,rolls:[value],cardId,players:meta.players||[],sequence:meta.sequence??null,total:meta.total??null});
   if(game.rollEvents.length>30)game.rollEvents.shift(); return value;
 };
 const recordRolls = (game, values, cardId=null, meta={}) => {
   game.lastRoll=null; game.lastRolls=[...values]; game.rollEventId=(game.rollEventId||0)+1;
-  game.rollEvents=game.rollEvents||[]; game.rollEvents.push({id:game.rollEventId,rolls:[...values],cardId,players:meta.players||[]});
+  game.rollEvents=game.rollEvents||[]; game.rollEvents.push({id:game.rollEventId,rolls:[...values],cardId,players:meta.players||[],sequence:meta.sequence??null,total:meta.total??null});
   if(game.rollEvents.length>30)game.rollEvents.shift(); return values;
 };
 
@@ -502,7 +502,7 @@ function immediate(game,p,c,payload){
     }
     case'meat':{
       const t=validateTarget(game,targetId,{noble:true,notSelf:true,actor:p.id});
-      let a=roll(game.rng),b=roll(game.rng);recordRolls(game,[a,b],c.id,{players:[{id:p.id,name:p.name},{id:t.id,name:t.name}]});log(game,`${p.name} rolled ${a}; ${t.name} rolled ${b}.`,`${p.name} a obtenu ${a} ; ${t.name} a obtenu ${b}.`);if(a>b){enforceGoldTakeProtection(game,p,t);changeGold(game,t,-200);changeGold(game,p,200);}return;
+      game.pending={type:'meatRoll',actorId:p.id,card:c,targetId:t.id,rollPlayers:[p.id,t.id],rolls:{},stage:'rolling'};return;
     }
     case'peoples_champion':{
       if(game.round!==4)throw new Error('People’s Champion can only be played in the last round.');
@@ -548,27 +548,8 @@ function immediate(game,p,c,payload){
       const t=validateTarget(game,targetId,{noble:true,notSelf:true,actor:p.id});enforceGoldTakeProtection(game,p,t);changeGold(game,p,-100);changeGold(game,t,-300);return;
     }
     case'black_plague':{
-      const pool=[...nobles(game)];
-      // Every Noble participates. If the Noble count is odd, the card player
-      // is the leftover player and rolls with the last Noble; the card player
-      // is exempt from the 200-gold loss in that pairing.
-      if(pool.length%2===1){
-        const actorIndex=pool.findIndex(n=>n.id===p.id);
-        if(actorIndex>=0) pool.push(pool.splice(actorIndex,1)[0]);
-      }
-      const rolls=[];
-      for(let i=0;i<pool.length;i+=2){
-        const a=pool[i],b=pool[i+1];
-        if(!b)continue;
-        const da=roll(game.rng),db=roll(game.rng);
-        rolls.push(da,db);
-        if(da===1||db===1){
-          if(a.id!==p.id)changeGold(game,a,-200);
-          if(b.id!==p.id)changeGold(game,b,-200);
-        }
-      }
-      recordRolls(game,rolls,c.id,{players:pool.filter(Boolean).map(x=>({id:x.id,name:x.name}))});
-      log(game,`${p.name} resolved Black Plague. Rolls: ${rolls.join(', ')}.`,`Peste noire résolue par ${p.name}. Dés : ${rolls.join(', ')}.`);
+      const pool=nobles(game).map(x=>x.id);
+      game.pending={type:'blackPlague',actorId:p.id,card:c,unpairedIds:pool,pairs:[],rolls:{},stage:'pairing',loneId:null};
       return;
     }
     case'eye_for_eye':{const t=validateTarget(game,targetId,{notSelf:false});enforceGoldTakeProtection(game,p,t);changeGold(game,p,-100);changeGold(game,t,-300);return;}
@@ -592,10 +573,7 @@ function immediate(game,p,c,payload){
     }
     case'debt_collector':{const chooser=validateTarget(game,targetId,{notSelf:true,actor:p.id});game.pending={type:'debtCollector',actorId:p.id,card:c,targetId:chooser.id};return;}
     case'mad_king':{
-      const rolls=[];
-      for(const x of game.players){const d=roll(game.rng);rolls.push(d);if(d===1)changeGold(game,x,x.id===p.id?-500:-300);}
-      recordRolls(game,rolls,c.id,{players:game.players.map(x=>({id:x.id,name:x.name}))});
-      log(game,`${p.name} resolved Mad King. Rolls: ${rolls.join(', ')}.`,`${p.name} résout Roi fou. Dés : ${rolls.join(', ')}.`);
+      game.pending={type:'madKingRoll',actorId:p.id,card:c,rollPlayers:game.players.map(x=>x.id),rolls:{},stage:'rolling'};
       return;
     }
     case'royal_parrot':{
@@ -678,6 +656,68 @@ export function decide(game,playerId,payload={}){
   const p=playerById(game,playerId);if(!p)throw new Error('Player not found.');const q=game.pending;if(!q)throw new Error('No decision is pending.');
   const actor=playerById(game,q.actorId);
   const voteEligible=q.eligible?.includes(p.id);
+  if(q.type==='meatRoll'){
+    if(!q.rollPlayers.includes(p.id))throw new Error('Only the two selected players can roll.');
+    if(q.rolls[p.id]!=null)throw new Error('You already rolled.');
+    if(payload.roll!==true)throw new Error('Click the die to roll.');
+    q.rolls[p.id]=roll(game.rng);
+    recordRoll(game,q.rolls[p.id],q.card.id,{players:[{id:p.id,name:p.name}],sequence:Object.keys(q.rolls).length,total:2});
+    if(q.rollPlayers.every(id=>q.rolls[id]!=null)){
+      const a=playerById(game,q.rollPlayers[0]),b=playerById(game,q.rollPlayers[1]);
+      const av=q.rolls[a.id],bv=q.rolls[b.id];
+      log(game,`${a.name} rolled ${av}; ${b.name} rolled ${bv}.`,`${a.name} a obtenu ${av} ; ${b.name} a obtenu ${bv}.`);
+      if(av>bv){enforceGoldTakeProtection(game,a,b);changeGold(game,b,-200);changeGold(game,a,200);}
+      finishPending(game,actor,q);
+    }
+    return;
+  }
+  if(q.type==='madKingRoll'){
+    if(!q.rollPlayers.includes(p.id))throw new Error('Only players in the game can roll.');
+    if(q.rolls[p.id]!=null)throw new Error('You already rolled.');
+    if(payload.roll!==true)throw new Error('Click the die to roll.');
+    q.rolls[p.id]=roll(game.rng);
+    recordRoll(game,q.rolls[p.id],q.card.id,{players:[{id:p.id,name:p.name}],sequence:Object.keys(q.rolls).length,total:q.rollPlayers.length});
+    if(q.rollPlayers.every(id=>q.rolls[id]!=null)){
+      const values=q.rollPlayers.map(id=>q.rolls[id]);
+      q.rollPlayers.forEach(id=>{const x=playerById(game,id);if(q.rolls[id]===1)changeGold(game,x,x.id===q.actorId?-500:-300);});
+      log(game,`${actor.name} resolved Mad King. Rolls: ${values.join(', ')}.`,`${actor.name} résout Roi fou. Dés : ${values.join(', ')}.`);
+      finishPending(game,actor,q);
+    }
+    return;
+  }
+  if(q.type==='blackPlague'){
+    if(q.stage==='pairing'){
+      if(p.role!=='noble' || !q.unpairedIds.includes(p.id))throw new Error('Only an unpaired Noble can choose a pair.');
+      const partner=playerById(game,payload.partnerId);
+      if(!partner || partner.role!=='noble' || partner.id===p.id || !q.unpairedIds.includes(partner.id))throw new Error('Choose another unpaired Noble.');
+      q.pairs.push([p.id,partner.id]);
+      q.unpairedIds=q.unpairedIds.filter(id=>id!==p.id&&id!==partner.id);
+      if(q.unpairedIds.length===1){q.loneId=q.unpairedIds[0];q.stage='loneRolling';q.rolls={};}
+      else if(q.unpairedIds.length===0){q.stage='rollingPairs';q.rolls={};}
+      return;
+    }
+    if(q.stage==='rollingPairs'){
+      const pair=q.pairs.find(pair=>pair.includes(p.id));
+      if(!pair)throw new Error('Only a Noble in a selected pair can roll.');
+      if(q.rolls[p.id]!=null)throw new Error('You already rolled.');
+      if(payload.roll!==true)throw new Error('Click the die to roll.');
+      q.rolls[p.id]=roll(game.rng);recordRoll(game,q.rolls[p.id],q.card.id,{players:[{id:p.id,name:p.name}],sequence:Object.keys(q.rolls).length,total:q.pairs.length*2});
+      if(Object.keys(q.rolls).length===q.pairs.length*2){
+        for(const [aId,bId] of q.pairs){const a=playerById(game,aId),b=playerById(game,bId),av=q.rolls[aId],bv=q.rolls[bId];if(av===1||bv===1){changeGold(game,a,-200);changeGold(game,b,-200);}}
+        log(game,`${actor.name} resolved Black Plague.`,`Peste noire résolue par ${actor.name}.`);finishPending(game,actor,q);
+      }
+      return;
+    }
+    if(q.stage==='loneRolling'){
+      if(p.id!==q.loneId)throw new Error('Only the unpaired Noble can roll.');
+      q.loneRolls=q.loneRolls||[];
+      if(q.loneRolls.length>=2)throw new Error('You already rolled both dice.');
+      if(payload.roll!==true)throw new Error('Click the die to roll.');
+      const d=roll(game.rng);q.loneRolls.push(d);recordRoll(game,d,q.card.id,{players:[{id:p.id,name:p.name}],sequence:q.loneRolls.length,total:2});
+      if(q.loneRolls.length===2){if(q.loneRolls.includes(1))changeGold(game,p,-200);log(game,`${p.name} rolled ${q.loneRolls[0]} and ${q.loneRolls[1]} as the lone Noble.`,` ${p.name} a obtenu ${q.loneRolls[0]} et ${q.loneRolls[1]} en tant que Noble seul.`);finishPending(game,actor,q);}
+      return;
+    }
+  }
   if(q.type==='subRosa' && q.awaitRoll){
     if(p.id!==q.actorId)throw new Error('Only the player who played the card can roll.');
     if(payload.roll!==true)throw new Error('Click the die to roll.');
@@ -693,7 +733,7 @@ export function decide(game,playerId,payload={}){
       if(q.rolls[p.id]!=null)throw new Error('You already rolled this round.');
       q.rolls[p.id]=roll(game.rng);
       const x=playerById(game,p.id);
-      recordRoll(game,q.rolls[p.id],q.card.id,{players:[{id:p.id,name:x?.name||p.id}]});
+      recordRoll(game,q.rolls[p.id],q.card.id,{players:[{id:p.id,name:x?.name||p.id}],sequence:Object.keys(q.rolls).length,total:2});
       if(ids.every(id=>q.rolls[id]!=null)) {
         const aRoll=q.rolls[q.aId],bRoll=q.rolls[q.bId];
         if(aRoll===bRoll){q.rolls={};q.rollRound=(q.rollRound||1)+1;log(game,`We Ride Together is tied (${aRoll}-${bRoll}). Roll again.`,`On fait équipe est à égalité (${aRoll}-${bRoll}). Relancez les dés.`);return;}
@@ -1120,6 +1160,8 @@ export function action(game,playerId,msg){
 function publicPending(game,viewerId){
   const q=game.pending;if(!q)return null;
   const base={type:q.type,actorId:q.actorId,cardId:q.card?.id,targetId:q.targetId,eligible:q.eligible?.slice(),answered:q.votes?Object.keys(q.votes):q.supports?.map(x=>x.playerId)};
+  if(q.type==='meatRoll' || q.type==='madKingRoll'){base.stage=q.stage||'rolling';base.rollPlayers=q.rollPlayers?.slice()||[];base.rolls=q.rolls||{};}
+  if(q.type==='blackPlague'){base.stage=q.stage;base.unpairedIds=q.unpairedIds?.slice()||[];base.pairs=q.pairs?.map(pair=>pair.slice())||[];base.rolls=q.rolls||{};base.loneId=q.loneId||null;base.loneRolls=q.loneRolls||[];}
   if(q.type==='subRosa' && viewerId===q.actorId){base.mode=q.mode||null;base.roll=q.roll??null;base.awaitRoll=!!q.awaitRoll;}
   if(q.type==='betrayKing'){base.awaitRoll=!!q.awaitRoll;base.rollPlayerId=q.rollPlayerId||null;}
   if(q.type==='champion' && q.stage==='rolling'){base.stage='rolling';base.rollPlayers=q.rollPlayers?.slice()||[];base.rolls=q.rolls||{};}
@@ -1135,7 +1177,7 @@ export function publicState(game,viewerId){
   const viewer=playerById(game,viewerId);if(!viewer)throw new Error('Viewer not found.');
   return {
     phase:game.phase,round:game.round,direction:game.direction,currentPlayerId:game.currentPlayerId,kingId:game.kingId,
-    lastRoll:game.lastRoll??null,lastRolls:Array.isArray(game.lastRolls)?[...game.lastRolls]:null,rollEventId:game.rollEventId||0,rollEvents:(game.rollEvents||[]).slice(-20).map(e=>({id:e.id,rolls:[...e.rolls],cardId:e.cardId||null,players:(e.players||[]).map(x=>({...x}))})),
+    lastRoll:game.lastRoll??null,lastRolls:Array.isArray(game.lastRolls)?[...game.lastRolls]:null,rollEventId:game.rollEventId||0,rollEvents:(game.rollEvents||[]).slice(-20).map(e=>({id:e.id,rolls:[...e.rolls],cardId:e.cardId||null,players:(e.players||[]).map(x=>({...x})),sequence:e.sequence??null,total:e.total??null})),
     kingReveal:game.kingReveal?{startedAt:game.kingReveal.startedAt,endsAt:game.kingReveal.endsAt}:null,
     negotiation:game.negotiation?{startedAt:game.negotiation.startedAt,endsAt:game.negotiation.endsAt,received:game.negotiation.received[viewerId]||0}:null,
     players:game.players.map(p=>({id:p.id,name:p.name,role:p.role,gold:p.gold,connected:p.connected,handCount:p.hand.length,playedThisTurn:p.playedThisTurn||0,turnLimit:turnLimit(game,p),knights:p.knights.map(k=>({id:k.id,ownerId:k.ownerId,protection:k.placerRole==='king'?'king':'noble'})),commitments:p.commitments.map(c=>({type:c.type,targetId:c.targetId,untilRound:c.untilRound})),effects:p.effects.map(e=>({type:e.type,targetId:e.targetId,a:e.a,b:e.b,expiresAtTurnSerial:e.expiresAtTurnSerial}))})),

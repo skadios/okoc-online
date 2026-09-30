@@ -145,7 +145,7 @@ test('King’s Eye expires after the King’s next turn, not the protected Noble
 });
 
 test('automatic crown change does not leave a stale crown flag that skips the next turn',()=>{
-  const g=fresh();const k=g.players.find(x=>x.role==='king'),n=nobleOther(g,k);k.gold=1000;n.gold=1100;g.phase='negotiation';g.negotiation={startedAt:Date.now(),endsAt:Date.now()+120000,received:{},offers:new Map()};action(g,n.id,{type:'negotiateGold',targetId:k.id,amount:0,actionId:'crown'});assert.equal(g.kingId,n.id);g.phase='playing';g.currentPlayerId=n.id;n.hand=[{...CARD_MAP['black-plague'],instanceId:'after'} ,...n.hand];playCard(g,n.id,'after',{});assert.equal(n.playedThisTurn,1);
+  const g=fresh();const k=g.players.find(x=>x.role==='king'),n=nobleOther(g,k);k.gold=1000;n.gold=1100;g.phase='negotiation';g.negotiation={startedAt:Date.now(),endsAt:Date.now()+120000,received:{},offers:new Map()};action(g,n.id,{type:'negotiateGold',targetId:k.id,amount:0,actionId:'crown'});assert.equal(g.kingId,n.id);g.phase='playing';g.currentPlayerId=n.id;n.hand=[{...CARD_MAP['eye-for-eye'],instanceId:'after'} ,...n.hand];playCard(g,n.id,'after',{targetId:k.id});assert.equal(n.playedThisTurn,1);
 });
 
 test('no manual draw or manual King-change action exists',()=>{const g=fresh();assert.throws(()=>action(g,g.currentPlayerId,{type:'drawCard',actionId:'d'}),/Unknown game action/);assert.throws(()=>action(g,g.currentPlayerId,{type:'changeKing',actionId:'k'}),/Unknown game action/);});
