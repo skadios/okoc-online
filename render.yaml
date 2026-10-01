@@ -11,3 +11,5 @@ services:
         value: production
       - key: PORT
         value: 10000
+      - key: OKOC_DEV_MODE
+        value: "1"
