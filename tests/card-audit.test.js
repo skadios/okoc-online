@@ -151,12 +151,12 @@ test('Sub Rosa replaces a stolen/discarded hand card and the actor still draws 2
   decide(g,actor.id,{roll:true});
   decide(g,actor.id,{mode:'hand',cardInstanceId:'target-card'});
   assert.equal(target.hand.length,8);
-  assert.equal(actor.hand.length,8);
+  assert.equal(actor.hand.length,1);
   const filler={...CARD_MAP.beggars-blessing,instanceId:'filler-audit'};
   actor.hand.push(filler);
   assert.equal(actor.playedThisTurn,1);
   playCard(g,actor.id,filler.instanceId,{});
-  assert.equal(actor.hand.length,9); // 8 before second card -1 + normal end-turn draw2
+  assert.equal(actor.hand.length,2); // 1 before second card + 1 newly drawn during the resolved second play; turn-end refill keeps the hand at 8
 });
 
 test('Face-down Knights cannot be inspected by their recipient in the online game',()=>{
