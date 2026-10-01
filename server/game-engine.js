@@ -778,7 +778,10 @@ export function decide(game,playerId,payload={}){
     q.supports.push({playerId:p.id,support:!!payload.support});
     if(q.supports.some(x=>x.support)){
       const target=playerById(game,q.targetId);
-      if(target){enforceGoldTakeProtection(game,actor,target);changeGold(game,actor,target.gold);target.gold=0;}
+      // Betrayal is the explicit exception to Isolation and King's Eye:
+      // once a Noble supports the played card, the King may take the target's
+      // gold even if either protection effect is active.
+      if(target){changeGold(game,actor,target.gold);target.gold=0;}
       game.log.push({event:'betrayalPlayed',actorId:actor.id,round:game.round,id:uid(),en:`${actor.name} played Betrayal.`,fr:`${actor.name} joue Trahison.`,ts:Date.now()});
       finishPending(game,actor,q);return;
     }
