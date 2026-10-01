@@ -449,7 +449,7 @@ function immediate(game,p,c,payload){
       if(game.round===1)throw new Error('Betray the King cannot be played in the first round.');
       game.pending={type:'betrayKing',actorId:p.id,card:c,eligible:game.players.filter(x=>x.id!==p.id).map(x=>x.id),supports:[],kingRoll:null,mods:[]};return;
     }
-    case'council': game.pending={type:'council',kind:'council',actorId:p.id,card:c,eligible:game.players.map(x=>x.id),votes:{}};return;
+    case'council': game.pending={type:'council',kind:'council',actorId:p.id,card:c,eligible:game.players.map(x=>x.id),votes:{},stage:'voting'};return;
     case'divine':{
       if(game.round<3)throw new Error('Divine Right can only be played in the last two rounds.');
       if(p.gold>300)throw new Error('You need 300 gold or less to play Divine Right.');
@@ -459,7 +459,11 @@ function immediate(game,p,c,payload){
       const t=validateTarget(game,targetId,{notSelf:true,actor:p.id});
       game.pending={type:'grudge',actorId:p.id,card:c,targetId:t.id,accepted:null,payerId:null};return;
     }
-    case'helping_king': drawFrom(game,p.role,2,p);p.extraPlays++;return;
+    case'helping_king':{
+      drawFrom(game,p.role,2,p);
+      if(p.playedThisTurn===0){const base=game.players.length===4?2:3;p.extraPlays+=Math.max(0,3-base);}
+      return;
+    }
     case'hindsight':{
       const t=validateTarget(game,targetId,{noble:true,notSelf:true,actor:p.id});
       p.commitments.push({type:'hindsight',targetId:t.id,untilRound:game.round+1,cardId:c.id});return;
@@ -492,9 +496,8 @@ function immediate(game,p,c,payload){
       const t=validateTarget(game,targetId,{notSelf:true,actor:p.id});
       if(payload.mode==='force' && t.id===game.kingId)throw new Error('Choose a player other than the King for this Loyalty option.');
       if(payload.mode==='force'){
-        changeGold(game,t,-100);
-        changeGold(game,king(game),100);
-        game.pending={type:'loyaltyPledge',actorId:p.id,card:c,targetId:t.id};
+        const k=king(game);changeGold(game,t,-100);changeGold(game,k,100);
+        game.pending={type:'loyaltyPledge',actorId:p.id,card:c,targetId:t.id,kingId:k.id};
       }else{
         game.pending={type:'loyalty',actorId:p.id,card:c,targetId:t.id};
       }
@@ -541,7 +544,9 @@ function immediate(game,p,c,payload){
       return;
     }
     case'suppress_rebellion':{
-      const d=roll(game.rng);recordRoll(game,d,c.id,{players:[{id:p.id,name:p.name}]});if(d<=3){changeGold(game,p,200);nobles(game).filter(n=>n.id!==p.id).forEach(n=>changeGold(game,n,100));}return;
+      const k=king(game);if(!k)throw new Error('No King is available to roll.');
+      game.pending={type:'suppressRebellion',actorId:p.id,card:c,stage:'rolling',rollPlayerId:k.id,roll:null};
+      return;
     }
     case'wrath':{
       if(payload.mode==='bank'){const t=validateTarget(game,targetId,{notSelf:false});changeGold(game,t,-100);return;}
@@ -556,11 +561,7 @@ function immediate(game,p,c,payload){
     case'bend_knee':{const t=validateTarget(game,targetId,{notSelf:true,actor:p.id});game.pending={type:'bendKnee',actorId:p.id,card:c,targetId:t.id};return;}
     case'helping_noble':{
       drawFrom(game,p.role,2,p);
-      // The Noble variant explicitly grants enough extra plays to reach the
-      // printed 4-more (or 3-more with only 3 Nobles) when used first.
-      // Because Helping Hand itself is not a normal play slot, the bonus is
-      // one additional slot over the normal Noble limit.
-      p.extraPlays++;
+      if(p.playedThisTurn===0)p.extraPlays+=nobles(game).length===3?1:2;
       return;
     }
     case'anchor':{const t=validateTarget(game,targetId,{notSelf:true,actor:p.id}), t2=validateTarget(game,payload.target2Id,{notSelf:true,actor:p.id});if(t.id===t2.id)throw new Error('Anchor requires two different players.');game.pending={type:'anchor',actorId:p.id,card:c,targetId:t.id,target2Id:t2.id};return;}
@@ -687,10 +688,10 @@ export function decide(game,playerId,payload={}){
   }
   if(q.type==='blackPlague'){
     if(q.stage==='pairing'){
-      if(p.role!=='noble' || !q.unpairedIds.includes(p.id))throw new Error('Only an unpaired Noble can choose a pair.');
-      const partner=playerById(game,payload.partnerId);
-      if(!partner || partner.role!=='noble' || partner.id===p.id || !q.unpairedIds.includes(partner.id))throw new Error('Choose another unpaired Noble.');
-      q.pairs.push([p.id,partner.id]);
+      if(p.id!==q.actorId)throw new Error('Only the King who played Black Plague chooses the pairs.');
+      const a=playerById(game,payload.aId),b=playerById(game,payload.bId);
+      if(!a||!b||a.role!=='noble'||b.role!=='noble'||a.id===b.id||!q.unpairedIds.includes(a.id)||!q.unpairedIds.includes(b.id))throw new Error('Choose two different unpaired Nobles.');
+      q.pairs.push([a.id,b.id]);
       q.unpairedIds=q.unpairedIds.filter(id=>id!==p.id&&id!==partner.id);
       if(q.unpairedIds.length===1){q.loneId=q.unpairedIds[0];q.stage='loneRolling';q.rolls={};}
       else if(q.unpairedIds.length===0){q.stage='rollingPairs';q.rolls={};}
@@ -797,11 +798,27 @@ export function decide(game,playerId,payload={}){
     if(q.supports.length>=2){q.awaitRoll=true; q.rollPlayerId=king(game)?.id||null; return;}
     return;
   }
+  if(q.type==='suppressRebellion'){
+    if(p.id!==q.rollPlayerId)throw new Error('Only the King can roll for Suppress Rebellion.');
+    if(payload.roll!==true)throw new Error('Click the die to roll.');
+    const d=roll(game.rng);q.roll=d;recordRoll(game,d,q.card.id,{players:[{id:p.id,name:p.name}]});
+    if(d<=3){changeGold(game,actor,200);nobles(game).filter(n=>n.id!==actor.id).forEach(n=>changeGold(game,n,100));}
+    log(game,`${p.name} rolled ${d} for Suppress Rebellion.`,`${p.name} a obtenu ${d} pour Réprimer la rébellion.`);
+    finishPending(game,actor,q);return;
+  }
   if(q.type==='council'){
+    if(q.stage==='praise'){
+      if(p.id!==q.actorId)throw new Error('Only the card player can praise the King.');
+      if(payload.ackPraise!==true)throw new Error('The card player must praise the King.');
+      drawExact(game,actor,2);log(game,`${actor.name} praises the King after Council Meeting.`,`${actor.name} félicite le Roi après la Réunion du conseil.`);finishPending(game,actor,q);return;
+    }
     if(!voteEligible)throw new Error('You cannot vote on this.');q.votes[p.id]=!!payload.vote;
     if(q.eligible.every(id=>id in q.votes)){
-      const yes=q.eligible.every(id=>q.votes[id]);if(yes){changeGold(game,king(game),-100);changeGold(game,actor,100);}else changeGold(game,actor,-100);drawExact(game,actor,2);finishPending(game,actor,q);
-    }return;
+      const yes=q.eligible.every(id=>q.votes[id]);
+      if(yes){changeGold(game,king(game),-100);changeGold(game,actor,100);}else changeGold(game,actor,-100);
+      q.stage='praise';
+    }
+    return;
   }
   if(q.type==='grudge'){
     if(p.id!==q.targetId)throw new Error('Only the chosen player can decide.');
@@ -824,7 +841,8 @@ export function decide(game,playerId,payload={}){
   if(q.type==='loyaltyPledge'){
     if(p.id!==q.targetId)throw new Error('Only the chosen player can pledge loyalty.');
     if(payload.ack!==true)throw new Error('The chosen player must acknowledge the loyalty pledge.');
-    log(game,`${p.name} pledges loyalty to ${actor.name}.`,`${p.name} prête allégeance à ${actor.name}.`);
+    const pledgeKing=playerById(game,q.kingId||game.kingId);if(!pledgeKing)throw new Error('King unavailable for the loyalty pledge.');
+    log(game,`${p.name} pledges loyalty to ${pledgeKing.name}.`,`${p.name} prête allégeance à ${pledgeKing.name}.`);
     finishPending(game,actor,q);return;
   }
   if(q.type==='subRosa'){
@@ -845,8 +863,9 @@ export function decide(game,playerId,payload={}){
       if(!payload.cardInstanceId)throw new Error('Choose a card to discard from the revealed hand.');
       const chosen=target.hand.find(c=>c.instanceId===payload.cardInstanceId);if(!chosen)throw new Error('That card is no longer available.');
       if(actor.role!=='king' && chosen.side!==actor.role)throw new Error('You cannot take a card from the other role’s deck.');
-      if(actor.role!=='king' && chosen.id==='royal-bomb')throw new Error('Royal Bomb cannot be stolen.');
+      if(chosen.id==='royal-bomb')throw new Error('Royal Bomb can only be discarded or given away by its owner during negotiation.');
       target.hand=target.hand.filter(c=>c.instanceId!==chosen.instanceId);
+      drawToMinimum(game,target);
       if(actor.role==='king'){
         game.discard.push(chosen);
         log(game,`${actor.name} discarded a card from ${target.name}’s hand.`,`${actor.name} défausse une carte de la main de ${target.name}.`);
@@ -861,7 +880,7 @@ export function decide(game,playerId,payload={}){
         if(!stealable.length){finishPending(game,actor,q);return;}
         const stolen=stealable[Math.floor(game.rng()*stealable.length)];
         target.hand=target.hand.filter(c=>c.instanceId!==stolen.instanceId);
-        actor.hand.push(stolen);
+        actor.hand.push(stolen);drawToMinimum(game,target);
         log(game,`${actor.name} took a random card from ${target.name}’s hand after inspecting a Knight.`,`${actor.name} prend une carte au hasard de la main de ${target.name} après avoir inspecté un Chevalier.`);
       }
     }
@@ -921,7 +940,7 @@ export function decide(game,playerId,payload={}){
     if(q.rolls[p.id]!=null)throw new Error('You already rolled.');
     if(payload.roll!==true)throw new Error('Click the die to roll.');
     q.rolls[p.id]=roll(game.rng);
-    if(q.rollPlayers.every(id=>q.rolls[id]!=null)){const target=playerById(game,q.targetId),k=king(game),a=q.rolls[target.id],b=q.rolls[k.id];recordRolls(game,[a,b],q.card.id,{players:[{id:target.id,name:target.name},{id:k.id,name:k.name}]});const targetWins=a>b;const loser=targetWins?k:target;changeGold(game,loser,-100);log(game,`${target.name} and ${k.name} contested the crown (${a} vs ${b}).`,`${target.name} et ${k.name} disputent la couronne (${a} contre ${b}).`);if(targetWins)swapKing(game,target.id);finishPending(game,actor,q);}return;
+    if(q.rollPlayers.every(id=>q.rolls[id]!=null)){const target=playerById(game,q.targetId),k=king(game),a=q.rolls[target.id],b=q.rolls[k.id];recordRolls(game,[a,b],q.card.id,{players:[{id:target.id,name:target.name},{id:k.id,name:k.name}]});const targetWins=a>b;log(game,`${target.name} and ${k.name} contested the crown (${a} vs ${b}).`,`${target.name} et ${k.name} disputent la couronne (${a} contre ${b}).`);if(targetWins)swapKing(game,target.id);finishPending(game,actor,q);}return;
   }
   if(q.type==='champion'){
     if(!voteEligible)throw new Error('You cannot vote on this.');q.votes[p.id]=!!payload.vote;if(q.eligible.every(id=>id in q.votes)){
@@ -1009,6 +1028,7 @@ export function offerTrade(game,fromId,toId,giveId){
   if(game.phase!=='negotiation')throw new Error('Negotiation is not active.');
   const from=playerById(game,fromId),to=playerById(game,toId);if(!from||!to||from.id===to.id)throw new Error('Invalid trade target.');
   const card=from.hand.find(c=>c.instanceId===giveId);if(!card)throw new Error('Card not found.');
+  if(card.id==='royal-bomb')throw new Error('Royal Bomb can only be given away directly or discarded by its owner during negotiation.');
   if(card.side!==from.role || from.role!==to.role)throw new Error('Card offers cannot cross role decks.');
   const offers=game.negotiation.offers||new Map();game.negotiation.offers=offers;
   const counts=game.negotiation.offerCountByPlayer||new Map();game.negotiation.offerCountByPlayer=counts;
@@ -1026,6 +1046,7 @@ export function respondTrade(game,targetId,offerId,receiveId,accept=true){
   if(!accept)return {accepted:false};
   const from=playerById(game,offer.fromId),to=playerById(game,offer.toId);if(!from||!to)throw new Error('Player unavailable.');
   const give=from.hand.find(c=>c.instanceId===offer.giveId),receive=to.hand.find(c=>c.instanceId===receiveId);if(!give||!receive)throw new Error('Both cards must still be in the players’ hands.');
+  if(give.id==='royal-bomb' || receive.id==='royal-bomb')throw new Error('Royal Bomb cannot be exchanged through a normal card trade.');
   if(from.role!==to.role || give.side!==from.role || receive.side!==to.role)throw new Error('Card trades cannot cross role decks.');
   from.hand=from.hand.filter(c=>c.instanceId!==give.instanceId);to.hand=to.hand.filter(c=>c.instanceId!==receive.instanceId);from.hand.push(receive);to.hand.push(give);
   log(game,`${from.name} and ${to.name} exchanged cards.`,`${from.name} et ${to.name} ont échangé des cartes.`);return {accepted:true,fromId:from.id,toId:to.id,give,receive};
@@ -1162,6 +1183,7 @@ function publicPending(game,viewerId){
   const base={type:q.type,actorId:q.actorId,cardId:q.card?.id,targetId:q.targetId,eligible:q.eligible?.slice(),answered:q.votes?Object.keys(q.votes):q.supports?.map(x=>x.playerId)};
   if(q.type==='meatRoll' || q.type==='madKingRoll'){base.stage=q.stage||'rolling';base.rollPlayers=q.rollPlayers?.slice()||[];base.rolls=q.rolls||{};}
   if(q.type==='blackPlague'){base.stage=q.stage;base.unpairedIds=q.unpairedIds?.slice()||[];base.pairs=q.pairs?.map(pair=>pair.slice())||[];base.rolls=q.rolls||{};base.loneId=q.loneId||null;base.loneRolls=q.loneRolls||[];}
+  if(q.type==='suppressRebellion'){base.stage=q.stage||'rolling';base.rollPlayerId=q.rollPlayerId||null;base.roll=q.roll??null;}
   if(q.type==='subRosa' && viewerId===q.actorId){base.mode=q.mode||null;base.roll=q.roll??null;base.awaitRoll=!!q.awaitRoll;}
   if(q.type==='betrayKing'){base.awaitRoll=!!q.awaitRoll;base.rollPlayerId=q.rollPlayerId||null;}
   if(q.type==='champion' && q.stage==='rolling'){base.stage='rolling';base.rollPlayers=q.rollPlayers?.slice()||[];base.rolls=q.rolls||{};}
