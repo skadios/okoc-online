@@ -66,17 +66,17 @@ This audit compares the 42 physical card effects represented by the supplied Pri
 
 ## Rules / implementation points that still need clarification
 
-1. **Helping Hand wording conflict:** the supplied printed card contains a first-card special case (3 or 4 follow-up plays depending on Noble count), while the official Royal Advisor currently summarizes Helping Hand as simply drawing 2 and getting one extra card. The implementation currently follows the printed card wording. The project owner should decide which wording is authoritative if this difference matters. https://onecrown.store/
+1. **Helping Hand:** the online implementation follows the exact wording printed on the card. No further interpretation is being used for its first-card exception.
 
-2. **Black Plague pairing:** the supplied card wording says Nobles pair up but does not explicitly state that the King selects the pairs. The online version uses the project owner's explicit rule that the King chooses who pairs with whom.
+2. **Black Plague pairing:** the Nobles choose their own partners. This is now how the online action works.
 
-3. **Black Plague with an odd Noble count:** the supplied card says the lone Noble can lose gold but does not itself specify the two-dice procedure. The online version uses the project owner's explicit clarification: the lone Noble rolls twice and loses 200 if either die is 1.
+3. **Black Plague with an odd Noble count:** the online version follows the clarified rule: the remaining Noble rolls twice and loses 200 if either die is 1.
 
-4. **People's Champion ties:** the physical/official text explains the roll and winning crown change, but does not specify a tie resolution. The current server leaves the crown with the current King because the nominee must roll strictly higher.
+4. **People's Champion ties:** a tie causes both players to roll again until the tie is broken.
 
 5. **Simultaneous crown changes involving more than two candidates:** the official clarification explicitly describes the two-player simultaneous case (both roll; lower loses 100; higher becomes King). The online game has additional deterministic handling for multi-player/gold-crown edge cases; this is not fully specified by the physical wording and should be confirmed if such a situation is intended to be reachable.
 
-6. **Scapegoat "to the King's left":** the online implementation maps this to the next Noble in the server seat order. The physical wording and alternating round direction could be interpreted differently; this should be confirmed if "left" is meant from a table-facing perspective rather than seat order.
+6. **Scapegoat "to the King's left":** the online implementation treats left as a fixed physical seat relation in the seat order, independent of the round's turn direction.
 
 7. **We Ride Together split:** the physical card only says the players may agree to lose 100 each after both rolls. The online interface makes the lower roller propose the split and the higher roller accept/refuse. This is a digital interaction choice, not a newly asserted physical rule.
 
