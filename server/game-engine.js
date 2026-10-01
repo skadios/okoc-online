@@ -35,6 +35,7 @@ export function nobles(game){return game.players.filter(p=>p.role==='noble');}
 export function king(game){return playerById(game,game.kingId);}
 export function adjustGold(p,delta){p.gold=clampGold(p.gold+delta);return p.gold;}
 function changeGold(game,p,delta){const before=p.gold;const after=adjustGold(p,delta);if(after!==before){game.crownSuppressedIds?.delete(p.id)}return after;}
+function transferGold(game,from,to,amount){if(!from||!to||from.id===to.id)return 0;const requested=Math.max(0,Number(amount)||0);const moved=Math.min(requested,Math.max(0,from.gold));if(moved){changeGold(game,from,-moved);changeGold(game,to,moved);}return moved;}
 
 export function log(game,en,fr){game.log.push({id:uid(),en,fr,ts:Date.now()});if(game.log.length>150)game.log.shift();}
 
@@ -192,7 +193,7 @@ function applyRoundStart(game){
       }
       if(e.type==='debt' && e.active){
         const debtor=playerById(game,e.targetId);
-        if(debtor?.role==='noble'){ changeGold(game,debtor,-100); changeGold(game,p,100); }
+        if(debtor?.role==='noble'){ transferGold(game,debtor,p,100); }
       }
     }
   }
@@ -359,7 +360,7 @@ function finishPlayedCard(game,actor,card,{discard=true,count=true}={}){
     // End-of-turn refill: the hand is restored to the standard 8-card hand.
     // Card effects may already have drawn cards during the turn, so drawing
     // by the number of plays would overdraw in those cases.
-    drawToMinimum(game,actor);
+    drawExact(game,actor,2);
     actor.playedThisTurn=0; actor.extraPlays=0;
     const endedTurnSerial=game.turnSerial;
     expireAfterTurn(game,actor.id);
@@ -472,7 +473,7 @@ function immediate(game,p,c,payload){
       const total=game.players.filter(x=>x.role==='noble'&&x.id!==p.id).length*100;
       if(p.gold<total)throw new Error('You cannot afford the payment if the roll fails.');
       const d=roll(game.rng);recordRoll(game,d,c.id,{players:[{id:p.id,name:p.name}]});log(game,`${p.name} rolled ${d}.`,`${p.name} a obtenu ${d}.`);
-      if(d>=4)nobles(game).forEach(n=>{if(n.id!==p.id){enforceGoldTakeProtection(game,p,n);changeGold(game,n,-100);changeGold(game,p,100)}});
+      if(d>=4)nobles(game).forEach(n=>{if(n.id!==p.id){enforceGoldTakeProtection(game,p,n);transferGold(game,n,p,100);}});
       else nobles(game).forEach(n=>{if(n.id!==p.id)changeGold(game,p,-100),changeGold(game,n,100)});
       return;
     }
@@ -649,7 +650,7 @@ function finishPending(game,actor,pending){
   }
   actor.playedThisTurn++;
   const limit=(actor.role==='king'?(game.players.length===4?2:3):2)+actor.extraPlays;
-  if(actor.playedThisTurn>=limit){drawToMinimum(game,actor);actor.playedThisTurn=0;actor.extraPlays=0;expireAfterTurn(game,actor.id);game.turnSerial=(game.turnSerial||0)+1;const next=nextSeat(game,actor.id);if(next&&next.id===game.kingId){if(game.round===4){game.phase='gameover';log(game,`${king(game)?.name||'The King'} is King after round 4.`,`${king(game)?.name||'Le Roi'} est Roi après le round 4.`);}else beginNegotiation(game);}else if(next){game.currentPlayerId=next.id;}}
+  if(actor.playedThisTurn>=limit){drawExact(game,actor,2);actor.playedThisTurn=0;actor.extraPlays=0;expireAfterTurn(game,actor.id);game.turnSerial=(game.turnSerial||0)+1;const next=nextSeat(game,actor.id);if(next&&next.id===game.kingId){if(game.round===4){game.phase='gameover';log(game,`${king(game)?.name||'The King'} is King after round 4.`,`${king(game)?.name||'Le Roi'} est Roi après le round 4.`);}else beginNegotiation(game);}else if(next){game.currentPlayerId=next.id;}}
   addCardEvent(game,'resolved',actor,card,before);
 }
 
@@ -667,7 +668,7 @@ export function decide(game,playerId,payload={}){
       const a=playerById(game,q.rollPlayers[0]),b=playerById(game,q.rollPlayers[1]);
       const av=q.rolls[a.id],bv=q.rolls[b.id];
       log(game,`${a.name} rolled ${av}; ${b.name} rolled ${bv}.`,`${a.name} a obtenu ${av} ; ${b.name} a obtenu ${bv}.`);
-      if(av>bv){enforceGoldTakeProtection(game,a,b);changeGold(game,b,-200);changeGold(game,a,200);}
+      if(av>bv){enforceGoldTakeProtection(game,a,b);transferGold(game,b,a,200);}
       finishPending(game,actor,q);
     }
     return;
@@ -815,14 +816,14 @@ export function decide(game,playerId,payload={}){
     if(!voteEligible)throw new Error('You cannot vote on this.');q.votes[p.id]=!!payload.vote;
     if(q.eligible.every(id=>id in q.votes)){
       const yes=q.eligible.every(id=>q.votes[id]);
-      if(yes){changeGold(game,king(game),-100);changeGold(game,actor,100);}else changeGold(game,actor,-100);
+      if(yes)transferGold(game,king(game),actor,100);else changeGold(game,actor,-100);
       q.stage='praise';
     }
     return;
   }
   if(q.type==='grudge'){
     if(p.id!==q.targetId)throw new Error('Only the chosen player can decide.');
-    if(payload.accept===true){const source=validateTarget(game,payload.payerId,{noble:true,notSelf:false});enforceGoldTakeProtection(game,actor,source);changeGold(game,source,-200);changeGold(game,actor,200);}
+    if(payload.accept===true){const source=validateTarget(game,payload.payerId,{noble:true,notSelf:false});enforceGoldTakeProtection(game,actor,source);transferGold(game,source,actor,200);}
     else changeGold(game,actor,-100);
     finishPending(game,actor,q);return;
   }
@@ -830,11 +831,11 @@ export function decide(game,playerId,payload={}){
     if(p.id!==q.targetId)throw new Error('Only the chosen player can decide.');
     if(payload.choice==='payActor'){
       enforceGoldTakeProtection(game,p,actor);
-      changeGold(game,p,-100);changeGold(game,actor,100);
+      transferGold(game,p,actor,100);
     }else if(payload.choice==='forceKing'){
       const k=king(game);
       enforceGoldTakeProtection(game,p,actor);
-      changeGold(game,k,-100);changeGold(game,actor,100);
+      transferGold(game,k,actor,100);
     }else throw new Error('Choose an option.');
     finishPending(game,actor,q);return;
   }
@@ -888,7 +889,7 @@ export function decide(game,playerId,payload={}){
   }
   if(q.type==='tithe'){
     if(p.id!==q.targetId)throw new Error('Only the chosen player can decide.');
-    const payer=validateTarget(game,payload.payerId,{noble:true});if(payer.id===actor.id)throw new Error('Choose another Noble.');enforceGoldTakeProtection(game,actor,payer);changeGold(game,payer,-100);changeGold(game,actor,100);finishPending(game,actor,q);return;
+    const payer=validateTarget(game,payload.payerId,{noble:true});if(payer.id===actor.id)throw new Error('Choose another Noble.');enforceGoldTakeProtection(game,actor,payer);transferGold(game,payer,actor,100);finishPending(game,actor,q);return;
   }
   if(q.type==='bendKnee'){
     if(p.id!==q.targetId)throw new Error('Only the chosen player can decide.');
@@ -900,7 +901,7 @@ export function decide(game,playerId,payload={}){
   if(q.type==='anchor'){
     if(p.id!==q.targetId)throw new Error('Only Player A can resolve Anchor.');
     const a=playerById(game,q.targetId), b=playerById(game,q.target2Id);
-    if(payload.choice==='lose200'){changeGold(game,a,-200);log(game,`${a.name} chooses to lose 200 gold.`,`${a.name} choisit de perdre 200 pièces.`);} else if(payload.choice==='lose100ToOther'){changeGold(game,b,-100);changeGold(game,actor,100);log(game,`${a.name} chooses to make ${b.name} lose 100 gold and takes 100.`,`${a.name} choisit de faire perdre 100 pièces à ${b.name} et prend 100 pièces.`);} else throw new Error('Choose an option.');
+    if(payload.choice==='lose200'){changeGold(game,a,-200);log(game,`${a.name} chooses to lose 200 gold.`,`${a.name} choisit de perdre 200 pièces.`);} else if(payload.choice==='lose100ToOther'){transferGold(game,b,actor,100);log(game,`${a.name} chooses to make ${b.name} lose 100 gold and takes 100.`,`${a.name} choisit de faire perdre 100 pièces à ${b.name} et prend 100 pièces.`);} else throw new Error('Choose an option.');
     finishPending(game,actor,q);return;
   }
   if(q.type==='debtCollector'){
@@ -1088,11 +1089,8 @@ export function placeKnight(game,playerId,instanceId,targetId){
 export const placeBluffKnight=placeKnight;
 
 export function inspectKnight(game,playerId,knightId){
-  const p=playerById(game,playerId);
-  if(!p)throw new Error('Player not found.');
-  const k=p.knights.find(x=>x.id===knightId);
-  if(!k)throw new Error('That face-down card is not yours.');
-  return {id:k.id,real:k.real,cardId:k.card.id,cardName:{en:k.card.en,fr:k.card.fr},protection:k.placerRole||'noble'};
+  if(!playerById(game,playerId))throw new Error('Player not found.');
+  throw new Error('Face-down Knights cannot be inspected.');
 }
 
 export function markTurnDone(game,playerId){
