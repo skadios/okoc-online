@@ -25,7 +25,7 @@ test('game starts with 4-8 players and every player has exactly 8 cards',()=>{
 
 test('physical deck quantities are finite and shared-title cards stay in their role-specific pools',()=>{
   const kingCopies=KING_CARDS.reduce((n,c)=>n+c.copies,0),nobleCopies=NOBLE_CARDS.reduce((n,c)=>n+c.copies,0);
-  assert.equal(kingCopies,25);assert.equal(nobleCopies,74);assert.equal(kingCopies+nobleCopies,99);
+  assert.equal(kingCopies,35);assert.equal(nobleCopies,64);assert.equal(kingCopies+nobleCopies,99);
   assert.equal(KING_CARDS.find(c=>c.id==='sub-rosa').copies,2);assert.equal(NOBLE_CARDS.find(c=>c.id==='sub-rosa').copies,5);
   assert.equal(KING_CARDS.find(c=>c.id==='knight-noble').copies,1);assert.equal(NOBLE_CARDS.find(c=>c.id==='knight-noble').copies,2);
   assert.equal(KING_CARDS.find(c=>c.id==='helping-hand').copies,1);assert.equal(NOBLE_CARDS.find(c=>c.id==='helping-hand-noble').copies,3);
@@ -38,13 +38,13 @@ test('actual dealt hands contain only cards matching the player role',()=>{
   assert.equal(new Set([...g.kingDeck,...g.nobleDeck,...g.players.flatMap(p=>p.hand)].map(c=>c.instanceId)).size,8*8+g.kingDeck.length+g.nobleDeck.length);
 });
 
-test('a Knight indicator reveals only protection source publicly; only the owner can inspect the hidden card',()=>{
+test('a Knight indicator reveals only protection source publicly; face-down truth cannot be inspected directly',()=>{
   const g=ready(createGame(players(4),rng));const k=g.players.find(p=>p.role==='king');const n=g.players.find(p=>p.role==='noble');
   k.hand=[{...CARD_MAP['black-plague'],instanceId:'kb'}];g.currentPlayerId=k.id;
   const placed=action(g,k.id,{type:'placeKnight',instanceId:'kb',targetId:n.id,actionId:'place-king-knight'});assert.equal(placed.real,false);
   const pub=publicState(g,n.id);const indicator=pub.players.find(p=>p.id===n.id).knights[0];assert.equal(indicator.protection,'king');assert.equal('real' in indicator,false);assert.equal('cardId' in indicator,false);
-  const inspected=action(g,n.id,{type:'inspectKnight',knightId:indicator.id,actionId:'inspect-owner'});assert.equal(inspected.real,false);assert.equal(inspected.cardId,'black-plague');
-  assert.throws(()=>action(g,k.id,{type:'inspectKnight',knightId:indicator.id,actionId:'inspect-other'}),/not yours/i);
+  assert.throws(()=>action(g,n.id,{type:'inspectKnight',knightId:indicator.id,actionId:'inspect-owner'}),/Face-down Knights cannot be inspected/i);
+  assert.throws(()=>action(g,k.id,{type:'inspectKnight',knightId:indicator.id,actionId:'inspect-other'}),/Face-down Knights cannot be inspected/i);
 });
 
 test('server owns hidden hands: a viewer only receives their own hand',()=>{
