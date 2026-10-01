@@ -60,15 +60,15 @@ test('Suppress Rebellion makes the King, not the card player, roll',()=>{
   assert.equal(g.pending,null);
 });
 
-test('Black Plague pair selection is controlled by the King and the lone Noble rolls twice',()=>{
+test('Black Plague Nobles choose their own pair and the lone Noble rolls twice',()=>{
   const g=fresh();
   const king=put(g,'black-plague');
   const ns=g.players.filter(p=>p.role==='noble');
   const [a,b,lone]=ns;
   playCard(g,king.id,king.hand[0].instanceId,{});
   assert.equal(g.pending.stage,'pairing');
-  assert.throws(()=>decide(g,a.id,{partnerId:b.id}));
-  decide(g,king.id,{aId:a.id,bId:b.id});
+  decide(g,a.id,{partnerId:b.id});
+  assert.deepEqual(g.pending.pairs[0],[a.id,b.id]);
   assert.equal(g.pending.stage,'loneRolling');
   assert.equal(g.pending.loneId,lone.id);
   const before=lone.gold;
@@ -95,6 +95,26 @@ test('People’s Champion swaps gold with the King and does not add an extra 100
   assert.equal(g.kingId,target.id);
   assert.equal(target.gold,1000);
   assert.equal(k.gold,600);
+});
+
+test('People’s Champion rerolls a tied crown roll',()=>{
+  const g=fresh();
+  g.round=4;
+  const actor=put(g,'peoples-champion');
+  const k=g.players.find(p=>p.role==='king');
+  const target=nobleOther(g,actor);
+  let rolls=[0.5,0.5,0.8,0.6];
+  g.rng=()=>rolls.shift()??0.6;
+  playCard(g,actor.id,actor.hand[0].instanceId,{targetId:target.id});
+  for(const id of g.pending.eligible)decide(g,id,{vote:true});
+  decide(g,target.id,{roll:true});
+  decide(g,k.id,{roll:true});
+  assert.equal(g.pending.stage,'rolling');
+  assert.equal(Object.keys(g.pending.rolls).length,0);
+  decide(g,target.id,{roll:true});
+  decide(g,k.id,{roll:true});
+  assert.equal(g.pending,null);
+  assert.equal(g.kingId,target.id);
 });
 
 test('Helping Hand first-card limits follow the printed special cases',()=>{
@@ -194,4 +214,22 @@ test('Meat for Meat cannot create gold when the losing Noble has less than 200',
   decide(g,target.id,{roll:true});
   assert.equal(actor.gold,600);
   assert.equal(target.gold,0);
+});
+
+
+test('Scapegoat starts with the physically left Noble, regardless of round direction',()=>{
+  const build=(direction)=>{
+    const g=fresh();
+    const king=put(g,'scapegoat');
+    g.direction=direction;
+    playCard(g,king.id,king.hand[0].instanceId,{targetId:nobleOther(g,king)?.id});
+    return {g,first:g.pending.eligible[0]};
+  };
+  const a=build(1);
+  const b=build(-1);
+  assert.equal(a.first,b.first);
+  const kingIndex=a.g.seatOrder.indexOf(a.g.kingId);
+  const n=a.g.players.find(p=>p.id===a.first);
+  const nIndex=a.g.seatOrder.indexOf(n.id);
+  assert.equal(nIndex,(kingIndex-1+a.g.seatOrder.length)%a.g.seatOrder.length);
 });
