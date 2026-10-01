@@ -90,7 +90,7 @@ test('Sub Rosa does not discard a card when its die condition is not met',()=>{
 });
 
 test('Betrayal can be refused by one Noble and still succeed if another Noble supports it',()=>{
-  const g=createGame(players().concat({id:'p5',name:'P5',connected:true}),high);g.kingReveal=null;startRound(g);g.round=2;const actor=nobleOther(g,g.players.find(x=>x.role==='king'));const target=g.players.find(x=>x.role==='noble'&&x.id!==actor.id);const a=g.players.find(x=>x.role==='noble'&&x.id!==target.id&&x.id!==actor.id);actor.hand=[{...CARD_MAP.betrayal,instanceId:'b'}];g.currentPlayerId=actor.id;playCard(g,actor.id,'b',{targetId:target.id});decide(g,a.id,{support:false});assert.ok(g.pending);const b=g.players.find(x=>x.role==='noble'&&x.id!==target.id&&x.id!==a.id&&x.id!==actor.id);decide(g,b.id,{support:true});assert.equal(g.pending,null);assert.equal(target.gold,0);
+  const g=createGame(players().concat({id:'p5',name:'P5',connected:true}),high);g.kingReveal=null;startRound(g);g.round=2;const actor=g.players.find(x=>x.role==='king');const target=g.players.find(x=>x.role==='noble');const a=g.players.find(x=>x.role==='noble'&&x.id!==target.id);actor.hand=[{...CARD_MAP.betrayal,instanceId:'b'}];g.currentPlayerId=actor.id;playCard(g,actor.id,'b',{targetId:target.id});decide(g,a.id,{support:false});assert.ok(g.pending);const b=g.players.find(x=>x.role==='noble'&&x.id!==target.id&&x.id!==a.id&&x.id!==actor.id);decide(g,b.id,{support:true});assert.equal(g.pending,null);assert.equal(target.gold,0);
 });
 
 test('Betrayal ignores Isolation and King’s Eye once support is given',()=>{
@@ -170,10 +170,13 @@ test('automatic crown change does not leave a stale crown flag that skips the ne
 test('no manual draw or manual King-change action exists',()=>{const g=fresh();assert.throws(()=>action(g,g.currentPlayerId,{type:'drawCard',actionId:'d'}),/Unknown game action/);assert.throws(()=>action(g,g.currentPlayerId,{type:'changeKing',actionId:'k'}),/Unknown game action/);});
 
 test('physical PDF role mapping is authoritative, including shared-title King copies',()=>{
-  const kingIds=new Set(['black-plague','eye-for-eye','bend-knee','helping-hand','anchor','loyal-dog','mad-king','debt-collector','royal-parrot','shifting-tides','snakes','sub-rosa','scapegoat','kings-eye','we-ride-together','knight-noble']);
+  const kingIds=new Set(['actors','bad-blood','betrayal','black-plague','eye-for-eye','bend-knee','helping-hand','anchor','loyal-dog','mad-king','debt-collector','royal-parrot','shifting-tides','snakes','sub-rosa','scapegoat','kings-eye','we-ride-together','knight-noble']);
   assert.deepEqual(new Set(KING_CARDS.map(c=>c.id)),kingIds);
+  assert.equal(CARD_MAP.actors.side,'king');
+  assert.equal(CARD_MAP['bad-blood'].side,'king');
+  assert.equal(CARD_MAP.betrayal.side,'king');
   assert.equal(CARD_MAP.wrath.side,'noble');
-  assert.equal(KING_CARDS.length,16);
+  assert.equal(KING_CARDS.length,19);
   assert.equal(KING_CARDS.find(c=>c.id==='sub-rosa').copies,2);
   assert.equal(KING_CARDS.find(c=>c.id==='knight-noble').copies,1);
   assert.equal(KING_CARDS.find(c=>c.id==='helping-hand').copies,1);
