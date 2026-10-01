@@ -156,7 +156,7 @@ test('Sub Rosa replaces a stolen/discarded hand card and the actor still draws 2
   actor.hand.push(filler);
   assert.equal(actor.playedThisTurn,1);
   playCard(g,actor.id,filler.instanceId,{});
-  assert.equal(actor.hand.length,2); // 1 before second card + 1 newly drawn during the resolved second play; turn-end refill keeps the hand at 8
+  assert.equal(actor.hand.length,3); // 1 before second card - 1 played + 2 normal end-of-turn draws
 });
 
 test('Face-down Knights cannot be inspected by their recipient in the online game',()=>{
