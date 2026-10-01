@@ -816,7 +816,7 @@ export function decide(game,playerId,payload={}){
     if(!voteEligible)throw new Error('You cannot vote on this.');q.votes[p.id]=!!payload.vote;
     if(q.eligible.every(id=>id in q.votes)){
       const yes=q.eligible.every(id=>q.votes[id]);
-      if(yes)transferGold(game,king(game),actor,100);else changeGold(game,actor,-100);
+      if(yes){const k=king(game);enforceGoldTakeProtection(game,actor,k);transferGold(game,k,actor,100);}else changeGold(game,actor,-100);
       q.stage='praise';
     }
     return;
@@ -830,11 +830,11 @@ export function decide(game,playerId,payload={}){
   if(q.type==='loyalty'){
     if(p.id!==q.targetId)throw new Error('Only the chosen player can decide.');
     if(payload.choice==='payActor'){
-      enforceGoldTakeProtection(game,p,actor);
+      enforceGoldTakeProtection(game,actor,p);
       transferGold(game,p,actor,100);
     }else if(payload.choice==='forceKing'){
       const k=king(game);
-      enforceGoldTakeProtection(game,p,actor);
+      enforceGoldTakeProtection(game,actor,k);
       transferGold(game,k,actor,100);
     }else throw new Error('Choose an option.');
     finishPending(game,actor,q);return;
