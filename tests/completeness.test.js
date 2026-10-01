@@ -74,12 +74,12 @@ test('Knight placement is available to both roles, accepts any same-role card, a
 });
 
 test('Betrayal consumes a bluff but only a real Knight blocks it',()=>{
-  const g=fresh();g.round=2;const placer=g.players.find(x=>x.role==='king');const actor=g.players.find(x=>x.role==='noble');const target=g.players.find(x=>x.role==='noble'&&x.id!==actor.id);
-  target.knights=[{id:'fake',ownerId:target.id,placerId:placer.id,placerRole:'king',real:false,card:{...CARD_MAP['black-plague'],side:'king',instanceId:'fake-card'}}];
+  const g=fresh();g.round=2;const actor=g.players.find(x=>x.role==='king');const target=g.players.find(x=>x.role==='noble');
+  target.knights=[{id:'fake',ownerId:target.id,placerId:actor.id,placerRole:'king',real:false,card:{...CARD_MAP['black-plague'],side:'king',instanceId:'fake-card'}}];
   actor.hand=[{...CARD_MAP['betrayal'],instanceId:'b'}];g.currentPlayerId=actor.id;
   playCard(g,actor.id,'b',{targetId:target.id});assert.equal(target.knights.length,0);assert.equal(g.pending?.type,'betrayalSupport');
-  const g2=fresh();g2.round=2;const placer2=g2.players.find(x=>x.role==='king');const actor2=g2.players.find(x=>x.role==='noble');const t2=g2.players.find(x=>x.role==='noble'&&x.id!==actor2.id);
-  t2.knights=[{id:'real',ownerId:t2.id,placerId:placer2.id,placerRole:'king',real:true,card:{...CARD_MAP['knight-noble'],side:'king',instanceId:'real-card'}}];
+  const g2=fresh();g2.round=2;const actor2=g2.players.find(x=>x.role==='king');const t2=g2.players.find(x=>x.role==='noble');
+  t2.knights=[{id:'real',ownerId:t2.id,placerId:actor2.id,placerRole:'king',real:true,card:{...CARD_MAP['knight-noble'],side:'king',instanceId:'real-card'}}];
   actor2.hand=[{...CARD_MAP['betrayal'],instanceId:'b2'}];g2.currentPlayerId=actor2.id;playCard(g2,actor2.id,'b2',{targetId:t2.id});assert.equal(t2.knights.length,0);assert.equal(g2.pending,null);
 });
 
