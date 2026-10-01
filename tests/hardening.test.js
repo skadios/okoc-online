@@ -123,7 +123,7 @@ test('direct tradeCards cannot be used as a silent card theft endpoint',()=>{
 });
 
 test('Betrayal blocked by a real Knight resolves exactly once',()=>{
-  const g=fresh(4);g.round=2;const k=g.players.find(x=>x.role==='noble'),target=g.players.find(x=>x.role==='noble'&&x.id!==k.id);
+  const g=fresh(4);g.round=2;const k=g.players.find(x=>x.role==='king'),target=g.players.find(x=>x.role==='noble');
   k.hand=[{...CARD_MAP.betrayal,instanceId:'b'}];target.knights=[{id:'kn',ownerId:target.id,placerId:target.id,real:true,card:{...CARD_MAP['knight-noble'],instanceId:'kn-card'}}];
   g.currentPlayerId=k.id;playCard(g,k.id,'b',{targetId:target.id});
   assert.equal(g.pending,null);assert.equal(k.playedThisTurn,1);assert.equal(g.discard.filter(c=>c.id==='betrayal').length,1);
