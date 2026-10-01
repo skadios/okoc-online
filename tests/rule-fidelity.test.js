@@ -134,8 +134,8 @@ test('Royal Parrot stores the King-selected sentence and resolves the refusal pe
   const g=fresh();const k=g.players.find(x=>x.role==='king'),n=nobleOther(g,k);k.hand=[{...CARD_MAP['royal-parrot'],instanceId:'rp'}];g.currentPlayerId=k.id;playCard(g,k.id,'rp',{targetId:n.id,phrase:'Say this.'});assert.equal(g.pending.phrase,'Say this.');const before=n.gold;decide(g,n.id,{accept:false});assert.equal(n.gold,before-300);assert.equal(g.pending,null);
 });
 
-test('People’s Champion applies the simultaneous crown-roll penalty and changes King on a win',()=>{
-  const g=fresh();g.round=4;let rolls=[0.8,0.5];g.rng=()=>rolls.shift()??0.5;const actor=nobleOther(g,g.players.find(x=>x.role==='king'));const target=other(g,actor,g.players.find(x=>x.role==='king'));const k=g.players.find(x=>x.role==='king');actor.hand=[{...CARD_MAP['peoples-champion'],instanceId:'pc'}];g.currentPlayerId=actor.id;playCard(g,actor.id,'pc',{targetId:target.id});for(const id of g.pending.eligible)decide(g,id,{vote:true});assert.equal(g.pending.stage,'rolling');decide(g,target.id,{roll:true});decide(g,k.id,{roll:true});assert.equal(g.kingId,target.id);assert.equal(target.gold,900);assert.equal(k.gold,600);
+test('People’s Champion swaps gold with the King on a winning roll without an extra penalty',()=>{
+  const g=fresh();g.round=4;let rolls=[0.8,0.5];g.rng=()=>rolls.shift()??0.5;const actor=nobleOther(g,g.players.find(x=>x.role==='king'));const target=other(g,actor,g.players.find(x=>x.role==='king'));const k=g.players.find(x=>x.role==='king');actor.hand=[{...CARD_MAP['peoples-champion'],instanceId:'pc'}];g.currentPlayerId=actor.id;playCard(g,actor.id,'pc',{targetId:target.id});for(const id of g.pending.eligible)decide(g,id,{vote:true});assert.equal(g.pending.stage,'rolling');decide(g,target.id,{roll:true});decide(g,k.id,{roll:true});assert.equal(g.kingId,target.id);assert.equal(target.gold,1000);assert.equal(k.gold,600);
 });
 
 test('King’s Eye expires after the King’s next turn, not the protected Noble’s turn',()=>{
