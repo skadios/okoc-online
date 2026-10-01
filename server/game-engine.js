@@ -587,7 +587,7 @@ function immediate(game,p,c,payload){
     }
     case'shifting_tides':{const a=validateTarget(game,targetId,{noble:true}),b=validateTarget(game,payload.target2Id,{noble:true});if(a.id===b.id)throw new Error('Choose two different Nobles.');game.effects.push({type:'shifting',a:a.id,b:b.id,expiresAfterPlayerTurn:p.id,createdTurnSerial:game.turnSerial||0});log(game,`${a.name} and ${b.name} may only take gold from each other until ${p.name}’s next turn.`,`${a.name} et ${b.name} ne peuvent prendre de l’or que l’un à l’autre jusqu’au prochain tour de ${p.name}.`);return;}
     case'snakes':{const t=validateTarget(game,targetId,{notSelf:false});game.pending={type:'snakes',actorId:p.id,card:c,targetId:t.id,eligible:nobles(game).map(n=>n.id),votes:{}};return;}
-    case'scapegoat':{const ns=nobles(game);const kingIndex=game.seatOrder.indexOf(game.kingId);const ordered=ns.sort((a,b)=>{const ia=game.seatOrder.indexOf(a.id),ib=game.seatOrder.indexOf(b.id);const da=(ia-kingIndex+game.seatOrder.length)%game.seatOrder.length;const db=(ib-kingIndex+game.seatOrder.length)%game.seatOrder.length;return da-db;});game.pending={type:'scapegoat',actorId:p.id,card:c,votes:{},eligible:ordered.map(n=>n.id),currentVoterId:ordered[0]?.id||null};return;}
+    case'scapegoat':{const ns=nobles(game);const kingIndex=game.seatOrder.indexOf(game.kingId);const ordered=ns.sort((a,b)=>{const ia=game.seatOrder.indexOf(a.id),ib=game.seatOrder.indexOf(b.id);const da=(kingIndex-ia+game.seatOrder.length)%game.seatOrder.length;const db=(kingIndex-ib+game.seatOrder.length)%game.seatOrder.length;return da-db;});game.pending={type:'scapegoat',actorId:p.id,card:c,votes:{},eligible:ordered.map(n=>n.id),currentVoterId:ordered[0]?.id||null};return;}
     case'kings_eye':{const t=validateTarget(game,targetId,{notSelf:false});t.effects.push({type:'kings_eye',source:p.id,targetId:t.id,expiresAfterPlayerTurn:p.id,createdTurnSerial:game.turnSerial||0});return;}
     case'we_ride':{
       const a=validateTarget(game,targetId,{noble:true}),b=validateTarget(game,payload.target2Id,{noble:true});if(a.id===b.id)throw new Error('Choose two different Nobles.');
@@ -689,10 +689,10 @@ export function decide(game,playerId,payload={}){
   }
   if(q.type==='blackPlague'){
     if(q.stage==='pairing'){
-      if(p.id!==q.actorId)throw new Error('Only the King who played Black Plague chooses the pairs.');
-      const a=playerById(game,payload.aId),b=playerById(game,payload.bId);
-      if(!a||!b||a.role!=='noble'||b.role!=='noble'||a.id===b.id||!q.unpairedIds.includes(a.id)||!q.unpairedIds.includes(b.id))throw new Error('Choose two different unpaired Nobles.');
-      q.pairs.push([a.id,b.id]);
+      if(p.role!=='noble' || !q.unpairedIds.includes(p.id))throw new Error('Only an unpaired Noble can choose a pair.');
+      const partner=playerById(game,payload.partnerId);
+      if(!partner || partner.role!=='noble' || partner.id===p.id || !q.unpairedIds.includes(partner.id))throw new Error('Choose another unpaired Noble.');
+      q.pairs.push([p.id,partner.id]);
       q.unpairedIds=q.unpairedIds.filter(id=>id!==p.id&&id!==partner.id);
       if(q.unpairedIds.length===1){q.loneId=q.unpairedIds[0];q.stage='loneRolling';q.rolls={};}
       else if(q.unpairedIds.length===0){q.stage='rollingPairs';q.rolls={};}
@@ -941,13 +941,18 @@ export function decide(game,playerId,payload={}){
     if(q.rolls[p.id]!=null)throw new Error('You already rolled.');
     if(payload.roll!==true)throw new Error('Click the die to roll.');
     q.rolls[p.id]=roll(game.rng);
-    if(q.rollPlayers.every(id=>q.rolls[id]!=null)){const target=playerById(game,q.targetId),k=king(game),a=q.rolls[target.id],b=q.rolls[k.id];recordRolls(game,[a,b],q.card.id,{players:[{id:target.id,name:target.name},{id:k.id,name:k.name}]});const targetWins=a>b;log(game,`${target.name} and ${k.name} contested the crown (${a} vs ${b}).`,`${target.name} et ${k.name} disputent la couronne (${a} contre ${b}).`);if(targetWins)swapKing(game,target.id);finishPending(game,actor,q);}return;
+    if(q.rollPlayers.every(id=>q.rolls[id]!=null)){
+      const target=playerById(game,q.targetId),k=king(game),a=q.rolls[target.id],b=q.rolls[k.id];
+      recordRolls(game,[a,b],q.card.id,{players:[{id:target.id,name:target.name},{id:k.id,name:k.name}],rollRound:q.rollRound||1});
+      if(a===b){q.rolls={};q.rollRound=(q.rollRound||1)+1;log(game,`${target.name} and ${k.name} tied at ${a}; they roll again.`,`${target.name} et ${k.name} sont à égalité à ${a} ; ils relancent le dé.`);return;}
+      const targetWins=a>b;log(game,`${target.name} and ${k.name} contested the crown (${a} vs ${b}).`,`${target.name} et ${k.name} disputent la couronne (${a} contre ${b}).`);if(targetWins)swapKing(game,target.id);finishPending(game,actor,q);
+    }return;
   }
   if(q.type==='champion'){
     if(!voteEligible)throw new Error('You cannot vote on this.');q.votes[p.id]=!!payload.vote;if(q.eligible.every(id=>id in q.votes)){
       if(q.eligible.every(id=>q.votes[id])){
         const target=playerById(game,q.targetId);const k=king(game);
-        if(target && k && target.id!==k.id){q.stage='rolling';q.rolls={};q.rollPlayers=[target.id,k.id];return;}
+        if(target && k && target.id!==k.id){q.stage='rolling';q.rolls={};q.rollRound=1;q.rollPlayers=[target.id,k.id];return;}
         if(target && k && target.id===k.id)log(game,`${target.name} was nominated as People’s Champion but is already King.`,`${target.name} a été nommé Champion du peuple mais est déjà Roi.`);
       } else {
         log(game,`People’s Champion was not unanimous, so nothing happens.`,`Champion du peuple non unanime : aucun effet.`);
@@ -1184,7 +1189,7 @@ function publicPending(game,viewerId){
   if(q.type==='suppressRebellion'){base.stage=q.stage||'rolling';base.rollPlayerId=q.rollPlayerId||null;base.roll=q.roll??null;}
   if(q.type==='subRosa' && viewerId===q.actorId){base.mode=q.mode||null;base.roll=q.roll??null;base.awaitRoll=!!q.awaitRoll;}
   if(q.type==='betrayKing'){base.awaitRoll=!!q.awaitRoll;base.rollPlayerId=q.rollPlayerId||null;}
-  if(q.type==='champion' && q.stage==='rolling'){base.stage='rolling';base.rollPlayers=q.rollPlayers?.slice()||[];base.rolls=q.rolls||{};}
+  if(q.type==='champion' && q.stage==='rolling'){base.stage='rolling';base.rollPlayers=q.rollPlayers?.slice()||[];base.rolls=q.rolls||{};base.rollRound=q.rollRound||1;}
   if(q.type==='scapegoat'){base.currentVoterId=q.currentVoterId;base.stage=q.stage||null;base.rollPlayerId=q.rollPlayerId||null;}
   if(q.type==='weRide'){Object.assign(base,{aId:q.aId,bId:q.bId,aRoll:q.aRoll??null,bRoll:q.bRoll??null,rolls:q.rolls||{},rollRound:q.rollRound||1,stage:q.stage,lowerId:q.lowerId||null,higherId:q.higherId||null,splitOffer:!!q.splitOffer});}
   if(q.type==='actorsThank')base.acked=Object.keys(q.acks||{});
