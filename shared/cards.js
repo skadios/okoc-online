@@ -138,6 +138,7 @@ export const CARDS = [
 // Knight and Sub Rosa also appear in both physical decks; their King copies are
 // represented as role-specific deck clones with the same printed card identity.
 export const KING_CARD_IDS = new Set([
+  'actors','bad-blood','betrayal',
   'helping-hand','black-plague','eye-for-eye','bend-knee','anchor',
   'loyal-dog','mad-king','debt-collector','royal-parrot',
   'shifting-tides','snakes','sub-rosa','scapegoat','kings-eye',
