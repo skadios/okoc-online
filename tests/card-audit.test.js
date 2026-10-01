@@ -152,7 +152,7 @@ test('Sub Rosa replaces a stolen/discarded hand card and the actor still draws 2
   decide(g,actor.id,{mode:'hand',cardInstanceId:'target-card'});
   assert.equal(target.hand.length,8);
   assert.equal(actor.hand.length,1);
-  const filler={...CARD_MAP.beggars-blessing,instanceId:'filler-audit'};
+  const filler={...CARD_MAP['beggars-blessing'],instanceId:'filler-audit'};
   actor.hand.push(filler);
   assert.equal(actor.playedThisTurn,1);
   playCard(g,actor.id,filler.instanceId,{});
